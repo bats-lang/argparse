@@ -1,0 +1,4 @@
+[package]
+name = "argparse"
+kind = "lib"
+unsafe = true
