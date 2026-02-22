@@ -619,6 +619,59 @@ in
   else 0
 end
 
+(* Simple edit distance between two byte sequences in different buffers.
+   Used for "did you mean?" suggestions. O(n*m) but names are short. *)
+fun _edit_dist
+  {la:agz}{na:pos}{lt:agz}{fuel:nat} .<fuel>.
+  (argv: !$A.borrow(byte, la, na), a_off: int, a_len: int, av_len: int na,
+   tbuf: !$A.arr(byte, lt, 8192), b_off: int, b_len: int,
+   fuel: int fuel): int =
+  if fuel <= 0 then 999
+  else if a_len <= 0 then b_len
+  else if b_len <= 0 then a_len
+  else let
+    val ai = g1ofg0(a_off)
+    val bi = g1ofg0(b_off)
+  in
+    if ai >= 0 then if ai < av_len then
+      if bi >= 0 then if bi < 8192 then let
+        val ac = byte2int0($A.read<byte>(argv, ai))
+        val bc = byte2int0($A.get<byte>(tbuf, bi))
+        val cost = if $AR.eq_int_int(ac, bc) then 0 else 1
+        val d1 = $AR.add_int_int(_edit_dist(argv, a_off + 1, a_len - 1, av_len, tbuf, b_off, b_len, fuel - 1), 1)
+        val d2 = $AR.add_int_int(_edit_dist(argv, a_off, a_len, av_len, tbuf, b_off + 1, b_len - 1, fuel - 1), 1)
+        val d3 = $AR.add_int_int(_edit_dist(argv, a_off + 1, a_len - 1, av_len, tbuf, b_off + 1, b_len - 1, fuel - 1), cost)
+        val mn = if $AR.lt_int_int(d1, d2) then d1 else d2
+      in if $AR.lt_int_int(d3, mn) then d3 else mn end
+      else 999 else 999
+    else 999 else 999
+  end
+
+(* Find the closest matching option name, return its index or -1 *)
+fun _find_closest
+  {la:agz}{na:pos}{ls:agz}{lt:agz}{fuel:nat} .<fuel>.
+  (argv: !$A.borrow(byte, la, na), name_off: int, name_len: int, av_len: int na,
+   specs: !$A.arr(int, ls, 1024), tbuf: !$A.arr(byte, lt, 8192),
+   ac: int, i: int, best_idx: int, best_dist: int, fuel: int fuel): int =
+  if fuel <= 0 then best_idx
+  else if i >= ac then best_idx
+  else let
+    val kind = _spec_get(specs, i, 0)
+  in
+    if kind > 0 then let
+      val snoff = _spec_get(specs, i, 2)
+      val snlen = _spec_get(specs, i, 3)
+      val d = _edit_dist(argv, name_off, name_len, av_len, tbuf, snoff, snlen,
+        $AR.checked_nat((name_len + snlen) * 3))
+    in
+      if $AR.lt_int_int(d, best_dist) then
+        _find_closest(argv, name_off, name_len, av_len, specs, tbuf, ac, i + 1, i, d, fuel - 1)
+      else
+        _find_closest(argv, name_off, name_len, av_len, specs, tbuf, ac, i + 1, best_idx, best_dist, fuel - 1)
+    end
+    else _find_closest(argv, name_off, name_len, av_len, specs, tbuf, ac, i + 1, best_idx, best_dist, fuel - 1)
+  end
+
 implement parse {la}{na} (p, argv, argv_len, argc) = let
   val+ ~parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) = p
   val str_buf = $A.alloc<byte>(8192)
@@ -702,9 +755,14 @@ implement parse {la}{na} (p, argv, argv_len, argc) = let
               end
             end
           end
-          else
-            scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
-              ac, pos_idx, str_pos, next_pos, tok_num + 1, argc, subcmd_idx, fuel - 1)
+          else let
+            (* Unknown long option — find closest match for "did you mean?" *)
+            val closest = _find_closest(argv, name_off, name_len, av_len,
+              specs, tbuf, ac, 0, ~1, 999, $AR.checked_nat(ac))
+          in
+            if closest >= 0 then @(str_pos, subcmd_idx, 3000 + closest)
+            else @(str_pos, subcmd_idx, 3000)
+          end
         end
         else if $AR.eq_int_int(cls, 2) then let (* short option *)
           val ch = _get_short_char(argv, av_len, tok_start)
@@ -742,9 +800,8 @@ implement parse {la}{na} (p, argv, argv_len, argc) = let
               end
             end
           end
-          else
-            scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
-              ac, pos_idx, str_pos, next_pos, tok_num + 1, argc, subcmd_idx, fuel - 1)
+          else (* unknown short option *)
+            @(str_pos, subcmd_idx, 4000 + ch)
         end
         else if $AR.eq_int_int(cls, 3) then let (* positional *)
           val pidx = _find_pos_spec(specs, ac, 0, pos_idx, $AR.checked_nat(ac))
@@ -773,6 +830,9 @@ implement parse {la}{na} (p, argv, argv_len, argc) = let
   val @(final_sp, final_subcmd, err) =
     scan_argv(argv, argv_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
       ac, 0, 0, start_pos, 1, argc, ~1, $AR.checked_nat(argc * 2))
+
+  (* Check for scan errors (unknown options with suggestions) *)
+  val scan_err = err
 
   (* Post-parse validation *)
 
@@ -1022,7 +1082,16 @@ implement parse {la}{na} (p, argv, argv_len, argc) = let
 
   val () = $A.free<int>(subcmds)
 in
-  if $AR.gt_int_int(range_err, 0) then let
+  if $AR.gt_int_int(scan_err, 0) then let
+    val () = $A.free<byte>(str_buf)
+    val () = $A.free<int>(str_meta)
+    val () = $A.free<int>(int_vals)
+    val () = $A.free<int>(bool_vals)
+    val () = $A.free<int>(present)
+    val () = $A.free<byte>(tbuf)
+    val () = $A.free<int>(specs)
+  in $R.err(scan_err) end
+  else if $AR.gt_int_int(range_err, 0) then let
     val () = $A.free<byte>(str_buf)
     val () = $A.free<int>(str_meta)
     val () = $A.free<int>(int_vals)
