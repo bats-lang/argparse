@@ -60,6 +60,17 @@ stadef SPEC_STRIDE = 16
     )
 
 (* ============================================================
+   Parse error (linear)
+   ============================================================ *)
+
+#pub datavtype parse_error =
+  | err_unknown_long of (int)
+  | err_unknown_short of (int)
+  | err_range of (int)
+  | err_exclusive of (int)
+  | err_choice of (int)
+
+(* ============================================================
    API — Construction
    ============================================================ *)
 
@@ -102,7 +113,7 @@ stadef SPEC_STRIDE = 16
 #pub fn parse
   {la:agz}{na:pos}
   (p: parser, argv: !$A.borrow(byte, la, na), argv_len: int na,
-   argc: int): $R.result(parse_result)
+   argc: int): $R.result(parse_result, parse_error)
 
 (* ============================================================
    API — Extraction (phantom-typed)
@@ -133,6 +144,8 @@ stadef SPEC_STRIDE = 16
 #pub fn add_to_group {a:t@ype} (p: parser, group_id: int, handle: arg(a)): parser
 
 #pub fn parse_result_free(r: parse_result): void
+
+#pub fn parse_error_free(e: parse_error): void
 
 #pub fn parser_free(p: parser): void
 
@@ -1090,7 +1103,10 @@ in
     val () = $A.free<int>(present)
     val () = $A.free<byte>(tbuf)
     val () = $A.free<int>(specs)
-  in $R.err(scan_err) end
+  in
+    if scan_err >= 4000 then $R.err(err_unknown_short(scan_err - 4000))
+    else $R.err(err_unknown_long(scan_err - 3000))
+  end
   else if $AR.gt_int_int(range_err, 0) then let
     val () = $A.free<byte>(str_buf)
     val () = $A.free<int>(str_meta)
@@ -1099,7 +1115,7 @@ in
     val () = $A.free<int>(present)
     val () = $A.free<byte>(tbuf)
     val () = $A.free<int>(specs)
-  in $R.err(range_err) end
+  in $R.err(err_range(range_err)) end
   else if $AR.gt_int_int(group_err, 0) then let
     val () = $A.free<byte>(str_buf)
     val () = $A.free<int>(str_meta)
@@ -1108,7 +1124,7 @@ in
     val () = $A.free<int>(present)
     val () = $A.free<byte>(tbuf)
     val () = $A.free<int>(specs)
-  in $R.err(0 - group_err) end
+  in $R.err(err_exclusive(group_err)) end
   else if $AR.gt_int_int(choice_err, 0) then let
     val () = $A.free<byte>(str_buf)
     val () = $A.free<int>(str_meta)
@@ -1117,7 +1133,7 @@ in
     val () = $A.free<int>(present)
     val () = $A.free<byte>(tbuf)
     val () = $A.free<int>(specs)
-  in $R.err(1000 + choice_err) end
+  in $R.err(err_choice(choice_err)) end
   else
     $R.ok(parse_result_mk(str_buf, str_meta, int_vals, bool_vals, present,
       ac, final_sp, final_subcmd, tbuf, specs))
@@ -1295,3 +1311,11 @@ in
   $A.free<int>(iv); $A.free<int>(bv); $A.free<int>(pr);
   $A.free<byte>(tb); $A.free<int>(sp)
 end
+
+implement parse_error_free(e) =
+  case+ e of
+  | ~err_unknown_long(_) => ()
+  | ~err_unknown_short(_) => ()
+  | ~err_range(_) => ()
+  | ~err_exclusive(_) => ()
+  | ~err_choice(_) => ()
