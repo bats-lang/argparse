@@ -121,6 +121,11 @@ stadef SPEC_STRIDE = 16
 
 #pub fn get_string_len(r: !parse_result, h: arg(string_val)): int
 
+#pub fn get_string_copy
+  {l:agz}{n:pos}
+  (r: !parse_result, h: arg(string_val),
+   buf: !$A.arr(byte, l, n), max_len: int n): int
+
 #pub fn get_int(r: !parse_result, h: arg(int_val)): int
 
 #pub fn get_bool(r: !parse_result, h: arg(bool_val)): bool
@@ -1150,6 +1155,32 @@ implement get_string_len(r, h) = let
   val len = if mi >= 0 then if mi < 128 then $A.get<int>(smeta, mi) else 0 else 0
   prval () = fold@(r)
 in len end
+
+implement get_string_copy {l}{n} (r, h, buf, max_len) = let
+  val+ @parse_result_mk(sbuf, smeta, _, _, _, _, _, _, _, _) = r
+  val idx = $UNSAFE begin $UNSAFE.cast{int}(h) end
+  val mi = g1ofg0(idx * 2)
+  val off = if mi >= 0 then if mi < 128 then $A.get<int>(smeta, mi) else 0 else 0
+  val mi2 = g1ofg0(idx * 2 + 1)
+  val len = if mi2 >= 0 then if mi2 < 128 then $A.get<int>(smeta, mi2) else 0 else 0
+  val copy_len = (if len > max_len then max_len else len): int
+  val () = let
+    fun loop {lb:agz}{nd:pos}{ls2:agz}{k:nat | k <= nd} .<nd - k>.
+      (dst: !$A.arr(byte, lb, nd), src: !$A.arr(byte, ls2, 8192),
+       di: int k, si: int, nd: int nd, lim: int): void =
+      if di >= nd then ()
+      else if di >= lim then ()
+      else let val si1 = g1ofg0(si) in
+        if si1 >= 0 then
+          if si1 < 8192 then let
+            val () = $A.set<byte>(dst, di, $A.get<byte>(src, si1))
+          in loop(dst, src, di + 1, si + 1, nd, lim) end
+          else ()
+        else ()
+      end
+  in loop(buf, sbuf, 0, off, max_len, copy_len) end
+  prval () = fold@(r)
+in copy_len end
 
 implement get_int(r, h) = let
   val+ @parse_result_mk(_, _, ivals, _, _, _, _, _, _, _) = r
