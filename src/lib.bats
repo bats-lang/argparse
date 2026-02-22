@@ -242,6 +242,132 @@ in @(parser_mk(specs, tbuf, subcmds, ac, tp3, pc, sc + 1, gc, pno, pnl, pho, phl
    Implementations — Parse
    ============================================================ *)
 
+(* Compare bytes in argv at offset against spec text *)
+fun _bytes_eq
+  {la:agz}{na:pos}{lt:agz}{fuel:nat} .<fuel>.
+  (argv: !$A.borrow(byte, la, na), av_off: int, av_len: int na,
+   tbuf: !$A.arr(byte, lt, 8192), tb_off: int, cmp_len: int,
+   fuel: int fuel): bool =
+  if fuel <= 0 then true
+  else if cmp_len <= 0 then true
+  else let
+    val ai = g1ofg0(av_off)
+    val ti = g1ofg0(tb_off)
+  in
+    if ai >= 0 then if ai < av_len then
+      if ti >= 0 then if ti < 8192 then let
+        val ab = byte2int0($A.read<byte>(argv, ai))
+        val tb = byte2int0($A.get<byte>(tbuf, ti))
+      in
+        if $AR.eq_int_int(ab, tb) then
+          _bytes_eq(argv, av_off + 1, av_len, tbuf, tb_off + 1, cmp_len - 1, fuel - 1)
+        else false
+      end else false else false
+    else false else false
+  end
+
+(* Find arg index matching --name in argv starting at av_off *)
+fun _find_by_name
+  {la:agz}{na:pos}{ls:agz}{lt:agz}{fuel:nat} .<fuel>.
+  (argv: !$A.borrow(byte, la, na), av_off: int, name_len: int, av_len: int na,
+   specs: !$A.arr(int, ls, 1024), tbuf: !$A.arr(byte, lt, 8192),
+   ac: int, i: int, fuel: int fuel): int =
+  if fuel <= 0 then ~1
+  else if i >= ac then ~1
+  else let
+    val kind = _spec_get(specs, i, 0)
+  in
+    if kind > 0 then let (* option or flag *)
+      val snoff = _spec_get(specs, i, 2)
+      val snlen = _spec_get(specs, i, 3)
+    in
+      if $AR.eq_int_int(snlen, name_len) then
+        if _bytes_eq(argv, av_off, av_len, tbuf, snoff, name_len, name_len) then i
+        else _find_by_name(argv, av_off, name_len, av_len, specs, tbuf, ac, i + 1, fuel - 1)
+      else _find_by_name(argv, av_off, name_len, av_len, specs, tbuf, ac, i + 1, fuel - 1)
+    end
+    else _find_by_name(argv, av_off, name_len, av_len, specs, tbuf, ac, i + 1, fuel - 1)
+  end
+
+(* Find arg index matching short flag -c *)
+fun _find_by_short
+  {ls:agz}{fuel:nat} .<fuel>.
+  (specs: !$A.arr(int, ls, 1024), ch: int, ac: int, i: int, fuel: int fuel): int =
+  if fuel <= 0 then ~1
+  else if i >= ac then ~1
+  else let
+    val kind = _spec_get(specs, i, 0)
+    val sc = _spec_get(specs, i, 6)
+  in
+    if kind > 0 then
+      if $AR.eq_int_int(sc, ch) then i
+      else _find_by_short(specs, ch, ac, i + 1, fuel - 1)
+    else _find_by_short(specs, ch, ac, i + 1, fuel - 1)
+  end
+
+(* Parse int from bytes. Returns (value, success). *)
+fun _parse_int
+  {la:agz}{na:pos}{fuel:nat} .<fuel>.
+  (argv: !$A.borrow(byte, la, na), off: int, len: int, av_len: int na,
+   fuel: int fuel): @(int, bool) = let
+  fun digit_loop
+    {la:agz}{na:pos}{fuel:nat} .<fuel>.
+    (argv: !$A.borrow(byte, la, na), off: int, len: int, av_len: int na,
+     acc: int, i: int, fuel: int fuel): @(int, bool) =
+    if fuel <= 0 then @(acc, true)
+    else if i >= len then @(acc, true)
+    else let val p = g1ofg0(off + i) in
+      if p >= 0 then if p < av_len then let
+        val b = byte2int0($A.read<byte>(argv, p))
+      in
+        if b >= 48 then if b <= 57 then
+          digit_loop(argv, off, len, av_len, acc * 10 + (b - 48), i + 1, fuel - 1)
+        else @(0, false)
+        else @(0, false)
+      end else @(0, false) else @(0, false)
+    end
+in
+  if len <= 0 then @(0, false)
+  else let val p0 = g1ofg0(off) in
+    if p0 >= 0 then if p0 < av_len then let
+      val first = byte2int0($A.read<byte>(argv, p0))
+    in
+      if $AR.eq_int_int(first, 45) then let (* minus sign *)
+        val @(v, ok) = digit_loop(argv, off + 1, len - 1, av_len, 0, 0, len)
+      in @(0 - v, ok) end
+      else digit_loop(argv, off, len, av_len, 0, 0, len)
+    end else @(0, false) else @(0, false)
+  end
+end
+
+(* Store string value: copy from argv to result string buffer *)
+fn _store_str
+  {la:agz}{na:pos}{ls:agz}{lm:agz}
+  (argv: !$A.borrow(byte, la, na), av_off: int, val_len: int, av_len: int na,
+   str_buf: !$A.arr(byte, ls, 8192), str_meta: !$A.arr(int, lm, 128),
+   idx: int, str_pos: int): int = let
+  fun copy {la:agz}{na:pos}{ls:agz}{fuel:nat} .<fuel>.
+    (src: !$A.borrow(byte, la, na), dst: !$A.arr(byte, ls, 8192),
+     si: int, di: int, count: int, av_len: int na, fuel: int fuel): void =
+    if fuel <= 0 then ()
+    else if count <= 0 then ()
+    else let
+      val si1 = g1ofg0(si)
+      val di1 = g1ofg0(di)
+    in
+      if si1 >= 0 then if si1 < av_len then
+        if di1 >= 0 then if di1 < 8192 then let
+          val () = $A.set<byte>(dst, di1, $A.read<byte>(src, si1))
+        in copy(src, dst, si + 1, di + 1, count - 1, av_len, fuel - 1) end
+      end
+    end
+  val () = copy(argv, str_buf, av_off, str_pos, val_len, av_len, val_len)
+  val mi = g1ofg0(idx * 2)
+  val () = if mi >= 0 then if mi < 128 then $A.set<int>(str_meta, mi, str_pos)
+  val mi2 = g1ofg0(idx * 2 + 1)
+  val () = if mi2 >= 0 then if mi2 < 128 then $A.set<int>(str_meta, mi2, val_len)
+in str_pos + val_len end
+
 implement parse {la}{na} (p, argv, argv_len, argc) = let
   val+ ~parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) = p
   val str_buf = $A.alloc<byte>(8192)
@@ -249,6 +375,7 @@ implement parse {la}{na} (p, argv, argv_len, argc) = let
   val int_vals = $A.alloc<int>(64)
   val bool_vals = $A.alloc<int>(64)
   val present = $A.alloc<int>(64)
+  (* Initialize defaults *)
   fun init_defs {ls:agz}{li:agz}{lb:agz}{k:nat | k <= 64} .<64 - k>.
     (specs: !$A.arr(int, ls, 1024), ivals: !$A.arr(int, li, 64),
      bvals: !$A.arr(int, lb, 64), i: int k, n: int): void =
@@ -259,10 +386,205 @@ implement parse {la}{na} (p, argv, argv_len, argc) = let
       val () = $A.set<int>(bvals, i, 0)
     in init_defs(specs, ivals, bvals, i + 1, n) end
   val () = init_defs(specs, int_vals, bool_vals, 0, ac)
+
+  (* Scan argv: null-separated tokens.
+     Skip argv[0] (program name).
+     For each token:
+       - starts with "--": long option
+       - starts with "-" (not "--"): short option(s)
+       - otherwise: positional or subcommand *)
+  fun scan_argv
+    {la:agz}{na:pos}{ls:agz}{lt:agz}{li:agz}{lb:agz}{lp:agz}{lm:agz}{fuel:nat} .<fuel>.
+    (argv: !$A.borrow(byte, la, na), av_len: int na,
+     specs: !$A.arr(int, ls, 1024), tbuf: !$A.arr(byte, lt, 8192),
+     str_buf: !$A.arr(byte, _, 8192), str_meta: !$A.arr(int, lm, 128),
+     int_vals: !$A.arr(int, li, 64), bool_vals: !$A.arr(int, lb, 64),
+     present: !$A.arr(int, lp, 64),
+     ac: int, pos_idx: int, str_pos: int,
+     av_pos: int, tok_num: int, argc: int, subcmd_idx: int,
+     fuel: int fuel): @(int, int, int) (* str_pos, subcmd_idx, error *) =
+    if fuel <= 0 then @(str_pos, subcmd_idx, 0)
+    else if tok_num >= argc then @(str_pos, subcmd_idx, 0)
+    else let
+      (* Find end of current token (next null byte) *)
+      val tok_start = av_pos
+      fun find_end {la:agz}{na:pos}{f:nat} .<f>.
+        (argv: !$A.borrow(byte, la, na), pos: int, av_len: int na, f: int f): int =
+        if f <= 0 then pos
+        else if pos >= av_len then pos
+        else let val p1 = g1ofg0(pos) in
+          if p1 >= 0 then if p1 < av_len then
+            if $AR.eq_int_int(byte2int0($A.read<byte>(argv, p1)), 0) then pos
+            else find_end(argv, pos + 1, av_len, f - 1)
+          else pos else pos
+        end
+      val tok_end = find_end(argv, tok_start, av_len, av_len)
+      val tok_len = tok_end - tok_start
+      val next_pos = tok_end + 1 (* skip null *)
+    in
+      if tok_len <= 0 then
+        scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+          ac, pos_idx, str_pos, next_pos, tok_num + 1, argc, subcmd_idx, fuel - 1)
+      else let
+        val t0 = g1ofg0(tok_start)
+      in
+        if t0 < 0 then @(str_pos, subcmd_idx, ~1)
+        else if t0 >= av_len then @(str_pos, subcmd_idx, ~1)
+        else let
+          val b0 = byte2int0($A.read<byte>(argv, t0))
+        in
+          if $AR.eq_int_int(b0, 45) then let (* starts with - *)
+            val t1 = g1ofg0(tok_start + 1)
+          in
+            if t1 >= 0 then if t1 < av_len then let
+              val b1 = byte2int0($A.read<byte>(argv, t1))
+            in
+              if $AR.eq_int_int(b1, 45) then let (* -- long option *)
+                val name_off = tok_start + 2
+                val name_len = tok_len - 2
+                val idx = _find_by_name(argv, name_off, name_len, av_len, specs, tbuf, ac, 0, ac)
+              in
+                if idx >= 0 then let
+                  val kind = _spec_get(specs, idx, 0)
+                  val vtype = _spec_get(specs, idx, 1)
+                  val pi = g1ofg0(idx)
+                  val () = if pi >= 0 then if pi < 64 then $A.set<int>(present, pi, 1)
+                in
+                  if $AR.eq_int_int(kind, 2) then let (* flag/count *)
+                    val () = if pi >= 0 then if pi < 64 then let
+                      val cur = $A.get<int>(bool_vals, pi)
+                      val () = $A.set<int>(bool_vals, pi, cur + 1)
+                    in end
+                  in
+                    scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                      ac, pos_idx, str_pos, next_pos, tok_num + 1, argc, subcmd_idx, fuel - 1)
+                  end
+                  else let (* option with value — next token is the value *)
+                    val val_start = next_pos
+                    val val_end = find_end(argv, val_start, av_len, av_len)
+                    val val_len = val_end - val_start
+                    val next2 = val_end + 1
+                  in
+                    if $AR.eq_int_int(vtype, 1) then let (* int *)
+                      val @(iv, ok) = _parse_int(argv, val_start, val_len, av_len, val_len)
+                      val () = if pi >= 0 then if pi < 64 then $A.set<int>(int_vals, pi, iv)
+                    in
+                      scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                        ac, pos_idx, str_pos, next2, tok_num + 2, argc, subcmd_idx, fuel - 1)
+                    end
+                    else let (* string *)
+                      val sp2 = _store_str(argv, val_start, val_len, av_len,
+                        str_buf, str_meta, idx, str_pos)
+                    in
+                      scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                        ac, pos_idx, sp2, next2, tok_num + 2, argc, subcmd_idx, fuel - 1)
+                    end
+                  end
+                end
+                else (* unknown option — skip *)
+                  scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                    ac, pos_idx, str_pos, next_pos, tok_num + 1, argc, subcmd_idx, fuel - 1)
+              end
+            end
+            else let (* -c short option *)
+              val ch = b1
+              val idx = _find_by_short(specs, ch, ac, 0, ac)
+            in
+              if idx >= 0 then let
+                val kind = _spec_get(specs, idx, 0)
+                val vtype = _spec_get(specs, idx, 1)
+                val pi = g1ofg0(idx)
+                val () = if pi >= 0 then if pi < 64 then $A.set<int>(present, pi, 1)
+              in
+                if $AR.eq_int_int(kind, 2) then let
+                  val () = if pi >= 0 then if pi < 64 then let
+                    val cur = $A.get<int>(bool_vals, pi)
+                    val () = $A.set<int>(bool_vals, pi, cur + 1)
+                  in end
+                in
+                  scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                    ac, pos_idx, str_pos, next_pos, tok_num + 1, argc, subcmd_idx, fuel - 1)
+                end
+                else let
+                  val val_start = next_pos
+                  val val_end = find_end(argv, val_start, av_len, av_len)
+                  val val_len = val_end - val_start
+                  val next2 = val_end + 1
+                in
+                  if $AR.eq_int_int(vtype, 1) then let
+                    val @(iv, _) = _parse_int(argv, val_start, val_len, av_len, val_len)
+                    val () = if pi >= 0 then if pi < 64 then $A.set<int>(int_vals, pi, iv)
+                  in
+                    scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                      ac, pos_idx, str_pos, next2, tok_num + 2, argc, subcmd_idx, fuel - 1)
+                  end
+                  else let
+                    val sp2 = _store_str(argv, val_start, val_len, av_len,
+                      str_buf, str_meta, idx, str_pos)
+                  in
+                    scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                      ac, pos_idx, sp2, next2, tok_num + 2, argc, subcmd_idx, fuel - 1)
+                  end
+                end
+              end
+              else
+                scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                  ac, pos_idx, str_pos, next_pos, tok_num + 1, argc, subcmd_idx, fuel - 1)
+            end
+          end else @(str_pos, subcmd_idx, ~1) else @(str_pos, subcmd_idx, ~1)
+          end
+          else let (* positional or subcommand *)
+            (* Find next positional arg *)
+            fun find_pos {ls:agz}{f:nat} .<f>.
+              (specs: !$A.arr(int, ls, 1024), ac: int, i: int, pi: int, f: int f): int =
+              if f <= 0 then ~1
+              else if i >= ac then ~1
+              else if $AR.eq_int_int(_spec_get(specs, i, 0), 0) then
+                if $AR.eq_int_int(pi, 0) then i
+                else find_pos(specs, ac, i + 1, pi - 1, f - 1)
+              else find_pos(specs, ac, i + 1, pi, f - 1)
+            val pidx = find_pos(specs, ac, 0, pos_idx, ac)
+          in
+            if pidx >= 0 then let
+              val pi2 = g1ofg0(pidx)
+              val () = if pi2 >= 0 then if pi2 < 64 then $A.set<int>(present, pi2, 1)
+              val sp2 = _store_str(argv, tok_start, tok_len, av_len,
+                str_buf, str_meta, pidx, str_pos)
+            in
+              scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                ac, pos_idx + 1, sp2, next_pos, tok_num + 1, argc, subcmd_idx, fuel - 1)
+            end
+            else (* no more positionals — treat as subcommand *)
+              scan_argv(argv, av_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+                ac, pos_idx, str_pos, next_pos, tok_num + 1, argc, tok_num, fuel - 1)
+          end
+        end
+      end
+    end
+
+  (* Skip first token (program name) *)
+  val first_end = let
+    fun fe {la:agz}{na:pos}{f:nat} .<f>.
+      (argv: !$A.borrow(byte, la, na), pos: int, av_len: int na, f: int f): int =
+      if f <= 0 then pos
+      else if pos >= av_len then pos
+      else let val p1 = g1ofg0(pos) in
+        if p1 >= 0 then if p1 < av_len then
+          if $AR.eq_int_int(byte2int0($A.read<byte>(argv, p1)), 0) then pos
+          else fe(argv, pos + 1, av_len, f - 1)
+        else pos else pos
+      end
+  in fe(argv, 0, argv_len, argv_len) end
+  val start_pos = first_end + 1
+
+  val @(final_sp, final_subcmd, err) =
+    scan_argv(argv, argv_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+      ac, 0, 0, start_pos, 1, argc, ~1, argc * 2)
+
   val () = $A.free<int>(subcmds)
 in
   $R.ok(parse_result_mk(str_buf, str_meta, int_vals, bool_vals, present,
-    ac, 0, ~1, tbuf, specs))
+    ac, final_sp, final_subcmd, tbuf, specs))
 end
 
 (* ============================================================
