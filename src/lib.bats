@@ -123,6 +123,14 @@ stadef SPEC_STRIDE = 16
    API — Cleanup
    ============================================================ *)
 
+#pub fn format_help
+  {l:agz}{n:pos}
+  (r: !parse_result, buf: !$A.arr(byte, l, n), max_len: int n): int
+
+#pub fn add_exclusive_group(p: parser): @(parser, int)
+
+#pub fn add_to_group {a:t@ype} (p: parser, group_id: int, handle: arg(a)): parser
+
 #pub fn parse_result_free(r: parse_result): void
 
 #pub fn parser_free(p: parser): void
@@ -765,10 +773,96 @@ implement parse {la}{na} (p, argv, argv_len, argc) = let
     scan_argv(argv, argv_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
       ac, 0, 0, start_pos, 1, argc, ~1, $AR.checked_nat(argc * 2))
 
+  (* Post-parse validation *)
+
+  (* Int range validation: for each int arg with min != max, check bounds *)
+  fun check_ranges {ls:agz}{li:agz}{lp:agz}{k:nat | k <= 64} .<64 - k>.
+    (specs: !$A.arr(int, ls, 1024), int_vals: !$A.arr(int, li, 64),
+     present: !$A.arr(int, lp, 64), i: int k, ac: int): int =
+    if i >= ac then 0
+    else if i >= 64 then 0
+    else let
+      val vtype = _spec_get(specs, i, 1)
+      val pi = g1ofg0(i)
+    in
+      if $AR.eq_int_int(vtype, 1) then let
+        val mn = _spec_get(specs, i, 10)
+        val mx = _spec_get(specs, i, 11)
+      in
+        if $AR.eq_int_int(mn, 0) then
+          if $AR.eq_int_int(mx, 0) then check_ranges(specs, int_vals, present, i + 1, ac)
+          else let
+            val pv = if pi >= 0 then if pi < 64 then $A.get<int>(present, pi) else 0 else 0
+          in
+            if $AR.gt_int_int(pv, 0) then let
+              val v = if pi >= 0 then if pi < 64 then $A.get<int>(int_vals, pi) else 0 else 0
+            in
+              if $AR.lt_int_int(v, mn) then i + 1
+              else if $AR.gt_int_int(v, mx) then i + 1
+              else check_ranges(specs, int_vals, present, i + 1, ac)
+            end
+            else check_ranges(specs, int_vals, present, i + 1, ac)
+          end
+        else check_ranges(specs, int_vals, present, i + 1, ac)
+      end
+      else check_ranges(specs, int_vals, present, i + 1, ac)
+    end
+
+  val range_err = check_ranges(specs, int_vals, present, 0, ac)
+
+  (* Exclusive group validation: for each group, count how many args are present *)
+  fun check_exclusive {ls:agz}{lp:agz}{k:nat | k <= 64} .<64 - k>.
+    (specs: !$A.arr(int, ls, 1024), present: !$A.arr(int, lp, 64),
+     i: int k, ac: int, gid: int, count: int): int =
+    if i >= ac then count
+    else if i >= 64 then count
+    else let
+      val g = _spec_get(specs, i, 15)
+      val pi = g1ofg0(i)
+      val pv = if pi >= 0 then if pi < 64 then $A.get<int>(present, pi) else 0 else 0
+      val nc = if $AR.eq_int_int(g, gid) then
+        if $AR.gt_int_int(pv, 0) then count + 1 else count
+      else count
+    in check_exclusive(specs, present, i + 1, ac, gid, nc) end
+
+  (* Check all groups — for now just group 0..gc-1 *)
+  fun check_all_groups {ls:agz}{lp:agz}{k:nat | k <= 8} .<8 - k>.
+    (specs: !$A.arr(int, ls, 1024), present: !$A.arr(int, lp, 64),
+     g: int k, gc: int, ac: int): int =
+    if g >= gc then 0
+    else if g >= 8 then 0
+    else let
+      val cnt = check_exclusive(specs, present, 0, ac, g, 0)
+    in
+      if cnt > 1 then g + 1
+      else check_all_groups(specs, present, g + 1, gc, ac)
+    end
+
+  val group_err = check_all_groups(specs, present, 0, gc, ac)
+
   val () = $A.free<int>(subcmds)
 in
-  $R.ok(parse_result_mk(str_buf, str_meta, int_vals, bool_vals, present,
-    ac, final_sp, final_subcmd, tbuf, specs))
+  if $AR.gt_int_int(range_err, 0) then let
+    val () = $A.free<byte>(str_buf)
+    val () = $A.free<int>(str_meta)
+    val () = $A.free<int>(int_vals)
+    val () = $A.free<int>(bool_vals)
+    val () = $A.free<int>(present)
+    val () = $A.free<byte>(tbuf)
+    val () = $A.free<int>(specs)
+  in $R.err(range_err) end
+  else if $AR.gt_int_int(group_err, 0) then let
+    val () = $A.free<byte>(str_buf)
+    val () = $A.free<int>(str_meta)
+    val () = $A.free<int>(int_vals)
+    val () = $A.free<int>(bool_vals)
+    val () = $A.free<int>(present)
+    val () = $A.free<byte>(tbuf)
+    val () = $A.free<int>(specs)
+  in $R.err(0 - group_err) end
+  else
+    $R.ok(parse_result_mk(str_buf, str_meta, int_vals, bool_vals, present,
+      ac, final_sp, final_subcmd, tbuf, specs))
 end
 
 (* ============================================================
@@ -816,6 +910,121 @@ implement get_subcmd(r) = let
   val v = si
   prval () = fold@(r)
 in v end
+
+(* ============================================================
+   Implementations — Exclusive groups
+   ============================================================ *)
+
+implement add_exclusive_group(p) = let
+  val+ ~parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) = p
+  val gid = gc
+in @(parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc + 1, pno, pnl, pho, phl), gid) end
+
+implement add_to_group {a} (p, group_id, handle) = let
+  val+ ~parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) = p
+  val idx = $UNSAFE begin $UNSAFE.cast{int}(handle) end
+  val () = _spec_set(specs, idx, 15, group_id)
+in parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) end
+
+(* ============================================================
+   Implementations — Help formatting
+   ============================================================ *)
+
+fn _help_put
+  {l:agz}{n:pos}
+  (buf: !$A.arr(byte, l, n), pos: int, b: int, max_len: int n): int = let
+  val p = g1ofg0(pos)
+in
+  if p >= 0 then
+    if p < max_len then let
+      val () = $A.set<byte>(buf, p, $A.int2byte($AR.checked_byte(
+        if b >= 0 then if b < 256 then b else 63 else 63)))
+    in pos + 1 end
+    else pos
+  else pos
+end
+
+fun _help_copy
+  {l:agz}{n:pos}{lt:agz}{fuel:nat} .<fuel>.
+  (buf: !$A.arr(byte, l, n), dst: int,
+   tbuf: !$A.arr(byte, lt, 8192), src: int, len: int,
+   max_len: int n, fuel: int fuel): int =
+  if fuel <= 0 then dst
+  else if len <= 0 then dst
+  else let
+    val si = g1ofg0(src)
+    val di = g1ofg0(dst)
+  in
+    if si >= 0 then if si < 8192 then
+      if di >= 0 then if di < max_len then let
+        val b = byte2int0($A.get<byte>(tbuf, si))
+        val () = $A.set<byte>(buf, di, $A.int2byte($AR.checked_byte(
+          if b >= 0 then if b < 256 then b else 0 else 0)))
+      in _help_copy(buf, dst + 1, tbuf, src + 1, len - 1, max_len, fuel - 1) end
+      else dst else dst
+    else dst else dst
+  end
+
+implement format_help {l}{n} (r, buf, max_len) = let
+  val+ @parse_result_mk(_, _, _, _, _, ac, _, _, tbuf, specs) = r
+  (* "Usage:\n\n" *)
+  val pos = _help_put(buf, 0, 85, max_len)
+  val pos = _help_put(buf, pos, 115, max_len)
+  val pos = _help_put(buf, pos, 97, max_len)
+  val pos = _help_put(buf, pos, 103, max_len)
+  val pos = _help_put(buf, pos, 101, max_len)
+  val pos = _help_put(buf, pos, 58, max_len)
+  val pos = _help_put(buf, pos, 10, max_len)
+  val pos = _help_put(buf, pos, 10, max_len)
+
+  fun fmt_args {l:agz}{n:pos}{ls:agz}{lt:agz}{k:nat | k <= 64} .<64 - k>.
+    (buf: !$A.arr(byte, l, n), tbuf: !$A.arr(byte, lt, 8192),
+     specs: !$A.arr(int, ls, 1024), pos: int, i: int k, ac: int, max_len: int n): int =
+    if i >= ac then pos
+    else if i >= 64 then pos
+    else let
+      val noff = _spec_get(specs, i, 2)
+      val nlen = _spec_get(specs, i, 3)
+      val hoff = _spec_get(specs, i, 4)
+      val hlen = _spec_get(specs, i, 5)
+      val sch = _spec_get(specs, i, 6)
+      val kind = _spec_get(specs, i, 0)
+      val pos = _help_put(buf, pos, 32, max_len)
+      val pos = _help_put(buf, pos, 32, max_len)
+    in
+      if $AR.eq_int_int(kind, 0) then let
+        val pos = _help_copy(buf, pos, tbuf, noff, nlen, max_len, $AR.checked_nat(nlen))
+        val pos = _help_put(buf, pos, 32, max_len)
+        val pos = _help_put(buf, pos, 32, max_len)
+        val pos = _help_copy(buf, pos, tbuf, hoff, hlen, max_len, $AR.checked_nat(hlen))
+        val pos = _help_put(buf, pos, 10, max_len)
+      in fmt_args(buf, tbuf, specs, pos, i + 1, ac, max_len) end
+      else let
+        val pos = if sch >= 0 then let
+          val p = _help_put(buf, pos, 45, max_len)
+          val p = _help_put(buf, p, sch, max_len)
+          val p = _help_put(buf, p, 44, max_len)
+          val p = _help_put(buf, p, 32, max_len)
+        in p end
+        else let
+          val p = _help_put(buf, pos, 32, max_len)
+          val p = _help_put(buf, p, 32, max_len)
+          val p = _help_put(buf, p, 32, max_len)
+          val p = _help_put(buf, p, 32, max_len)
+        in p end
+        val pos = _help_put(buf, pos, 45, max_len)
+        val pos = _help_put(buf, pos, 45, max_len)
+        val pos = _help_copy(buf, pos, tbuf, noff, nlen, max_len, $AR.checked_nat(nlen))
+        val pos = _help_put(buf, pos, 32, max_len)
+        val pos = _help_put(buf, pos, 32, max_len)
+        val pos = _help_copy(buf, pos, tbuf, hoff, hlen, max_len, $AR.checked_nat(hlen))
+        val pos = _help_put(buf, pos, 10, max_len)
+      in fmt_args(buf, tbuf, specs, pos, i + 1, ac, max_len) end
+    end
+
+  val final_pos = fmt_args(buf, tbuf, specs, pos, 0, ac, max_len)
+  prval () = fold@(r)
+in final_pos end
 
 (* ============================================================
    Implementations — Cleanup
