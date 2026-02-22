@@ -6,6 +6,7 @@
 #use array as A
 #use arith as AR
 #use result as R
+#use env as E
 
 (* ============================================================
    Value type tags (phantom types)
@@ -840,6 +841,185 @@ implement parse {la}{na} (p, argv, argv_len, argc) = let
 
   val group_err = check_all_groups(specs, present, 0, gc, ac)
 
+  (* Choice validation: for string args with choices, verify value matches *)
+  fun _check_str_match
+    {ls:agz}{lt:agz}{fuel:nat} .<fuel>.
+    (str_buf: !$A.arr(byte, ls, 8192), s_off: int, s_len: int,
+     tbuf: !$A.arr(byte, lt, 8192), c_off: int, c_len: int,
+     fuel: int fuel): bool =
+    if fuel <= 0 then true
+    else if s_len <= 0 then true
+    else if c_len <= 0 then true
+    else let
+      val si = g1ofg0(s_off)
+      val ci = g1ofg0(c_off)
+    in
+      if si >= 0 then if si < 8192 then
+        if ci >= 0 then if ci < 8192 then let
+          val sb = byte2int0($A.get<byte>(str_buf, si))
+          val cb = byte2int0($A.get<byte>(tbuf, ci))
+        in
+          if $AR.eq_int_int(sb, cb) then
+            _check_str_match(str_buf, s_off + 1, s_len - 1, tbuf, c_off + 1, c_len - 1, fuel - 1)
+          else false
+        end else false else false
+      else false else false
+    end
+
+  (* Check one string value against null-separated choices *)
+  fun _check_one_choice
+    {ls:agz}{lt:agz}{fuel:nat} .<fuel>.
+    (str_buf: !$A.arr(byte, ls, 8192), s_off: int, s_len: int,
+     tbuf: !$A.arr(byte, lt, 8192), c_off: int, c_total_len: int,
+     choice_count: int, ci: int, fuel: int fuel): bool =
+    if fuel <= 0 then false
+    else if ci >= choice_count then false
+    else let
+      (* Find end of current choice (next null byte in tbuf) *)
+      fun _find_choice_end {lt:agz}{f:nat} .<f>.
+        (tbuf: !$A.arr(byte, lt, 8192), pos: int, limit: int, f: int f): int =
+        if f <= 0 then pos
+        else if pos >= limit then pos
+        else let val p1 = g1ofg0(pos) in
+          if p1 >= 0 then if p1 < 8192 then
+            if $AR.eq_int_int(byte2int0($A.get<byte>(tbuf, p1)), 0) then pos
+            else _find_choice_end(tbuf, pos + 1, limit, f - 1)
+          else pos else pos
+        end
+      val ce = _find_choice_end(tbuf, c_off, c_off + c_total_len, $AR.checked_nat(c_total_len))
+      val clen = ce - c_off
+    in
+      if $AR.eq_int_int(clen, s_len) then
+        if _check_str_match(str_buf, s_off, s_len, tbuf, c_off, clen, $AR.checked_nat(clen)) then true
+        else _check_one_choice(str_buf, s_off, s_len, tbuf, ce + 1, c_total_len - clen - 1, choice_count, ci + 1, fuel - 1)
+      else _check_one_choice(str_buf, s_off, s_len, tbuf, ce + 1, c_total_len - clen - 1, choice_count, ci + 1, fuel - 1)
+    end
+
+  fun check_choices
+    {ls:agz}{lt:agz}{lm:agz}{lp:agz}{lsp:agz}{k:nat | k <= 64} .<64 - k>.
+    (specs: !$A.arr(int, lsp, 1024), str_buf: !$A.arr(byte, ls, 8192),
+     str_meta: !$A.arr(int, lm, 128), tbuf: !$A.arr(byte, lt, 8192),
+     present: !$A.arr(int, lp, 64), i: int k, ac: int): int =
+    if i >= ac then 0
+    else if i >= 64 then 0
+    else let
+      val vtype = _spec_get(specs, i, 1)
+      val cc = _spec_get(specs, i, 14)
+    in
+      if $AR.eq_int_int(vtype, 0) then (* string type *)
+        if $AR.gt_int_int(cc, 0) then let (* has choices *)
+          val pi = g1ofg0(i)
+          val pv = if pi >= 0 then if pi < 64 then $A.get<int>(present, pi) else 0 else 0
+        in
+          if $AR.gt_int_int(pv, 0) then let
+            val mi = g1ofg0(i * 2)
+            val s_off = if mi >= 0 then if mi < 128 then $A.get<int>(str_meta, mi) else 0 else 0
+            val mi2 = g1ofg0(i * 2 + 1)
+            val s_len = if mi2 >= 0 then if mi2 < 128 then $A.get<int>(str_meta, mi2) else 0 else 0
+            val c_off = _spec_get(specs, i, 12)
+            val c_len = _spec_get(specs, i, 13)
+            val ok = _check_one_choice(str_buf, s_off, s_len, tbuf, c_off, c_len, cc, 0, $AR.checked_nat(cc))
+          in
+            if ok then check_choices(specs, str_buf, str_meta, tbuf, present, i + 1, ac)
+            else i + 1
+          end
+          else check_choices(specs, str_buf, str_meta, tbuf, present, i + 1, ac)
+        end
+        else check_choices(specs, str_buf, str_meta, tbuf, present, i + 1, ac)
+      else check_choices(specs, str_buf, str_meta, tbuf, present, i + 1, ac)
+    end
+
+  val choice_err = check_choices(specs, str_buf, str_meta, tbuf, present, 0, ac)
+
+  (* Env var fallback: for unset string options with env var, try getenv *)
+  fun check_env_fallback
+    {ls:agz}{lt:agz}{lm:agz}{lp:agz}{lsp:agz}{k:nat | k <= 64} .<64 - k>.
+    (specs: !$A.arr(int, lsp, 1024), str_buf: !$A.arr(byte, ls, 8192),
+     str_meta: !$A.arr(int, lm, 128), tbuf: !$A.arr(byte, lt, 8192),
+     present: !$A.arr(int, lp, 64), i: int k, ac: int, str_pos: int): int =
+    if i >= ac then str_pos
+    else if i >= 64 then str_pos
+    else let
+      val kind = _spec_get(specs, i, 0)
+      val vtype = _spec_get(specs, i, 1)
+      val pi = g1ofg0(i)
+      val pv = if pi >= 0 then if pi < 64 then $A.get<int>(present, pi) else 1 else 1
+    in
+      if $AR.eq_int_int(kind, 1) then (* option *)
+        if $AR.eq_int_int(vtype, 0) then (* string *)
+          if $AR.eq_int_int(pv, 0) then let (* not set *)
+            val e_off = _spec_get(specs, i, 12)
+            val e_len = _spec_get(specs, i, 13)
+            val cc = _spec_get(specs, i, 14)
+          in
+            if $AR.gt_int_int(e_len, 0) then
+              if $AR.eq_int_int(cc, 0) then let
+                (* This has env var, not choices — use env package *)
+                (* Copy env var name from tbuf to a temp borrow-able array *)
+                (* Build null-terminated env var name array *)
+                val env_name = $A.alloc<byte>(256)
+                fun _copy_ename {lt:agz}{le:agz}{fuel:nat} .<fuel>.
+                  (tbuf: !$A.arr(byte, lt, 8192), ebuf: !$A.arr(byte, le, 256),
+                   si: int, di: int, len: int, fuel: int fuel): void =
+                  if fuel <= 0 then ()
+                  else if len <= 0 then ()
+                  else let val s = g1ofg0(si) val d = g1ofg0(di) in
+                    if s >= 0 then if s < 8192 then
+                      if d >= 0 then if d < 256 then let
+                        val () = $A.set<byte>(ebuf, d, $A.get<byte>(tbuf, s))
+                      in _copy_ename(tbuf, ebuf, si + 1, di + 1, len - 1, fuel - 1) end
+                      else () else ()
+                    else () else ()
+                  end
+                val elen2 = if e_len > 255 then 255 else e_len
+                val () = _copy_ename(tbuf, env_name, e_off, 0, elen2, $AR.checked_nat(elen2))
+                (* Add null terminator *)
+                val () = let val nd = $AR.checked_idx(elen2, 256) in
+                  $A.set<byte>(env_name, nd, $A.int2byte($AR.checked_byte(0)))
+                end
+                (* Call env.get_cstr *)
+                val env_val = $A.alloc<byte>(4096)
+                val env_result = $E.get_cstr(env_name, env_val, 4096)
+                val () = $A.free<byte>(env_name)
+              in
+                case+ env_result of
+                | ~$R.some(env_len) => let
+                    (* Copy env_val to str_buf at str_pos *)
+                    fun copy_val {ls:agz}{le:agz}{fuel:nat} .<fuel>.
+                      (dst: !$A.arr(byte, ls, 8192), src: !$A.arr(byte, le, 4096),
+                       di: int, si: int, len: int, fuel: int fuel): void =
+                      if fuel <= 0 then ()
+                      else if len <= 0 then ()
+                      else let val d = g1ofg0(di) val s = g1ofg0(si) in
+                        if d >= 0 then if d < 8192 then
+                          if s >= 0 then if s < 4096 then let
+                            val () = $A.set<byte>(dst, d, $A.get<byte>(src, s))
+                          in copy_val(dst, src, di + 1, si + 1, len - 1, fuel - 1) end
+                          else () else ()
+                        else () else ()
+                      end
+                    val () = copy_val(str_buf, env_val, str_pos, 0, env_len, $AR.checked_nat(env_len))
+                    val () = $A.free<byte>(env_val)
+                    val mi = g1ofg0(i * 2)
+                    val () = if mi >= 0 then if mi < 128 then $A.set<int>(str_meta, mi, str_pos) else () else ()
+                    val mi2 = g1ofg0(i * 2 + 1)
+                    val () = if mi2 >= 0 then if mi2 < 128 then $A.set<int>(str_meta, mi2, env_len) else () else ()
+                    val () = if pi >= 0 then if pi < 64 then $A.set<int>(present, pi, 1) else () else ()
+                  in check_env_fallback(specs, str_buf, str_meta, tbuf, present, i + 1, ac, str_pos + env_len) end
+                | ~$R.none() => let
+                    val () = $A.free<byte>(env_val)
+                  in check_env_fallback(specs, str_buf, str_meta, tbuf, present, i + 1, ac, str_pos) end
+              end
+              else check_env_fallback(specs, str_buf, str_meta, tbuf, present, i + 1, ac, str_pos)
+            else check_env_fallback(specs, str_buf, str_meta, tbuf, present, i + 1, ac, str_pos)
+          end
+          else check_env_fallback(specs, str_buf, str_meta, tbuf, present, i + 1, ac, str_pos)
+        else check_env_fallback(specs, str_buf, str_meta, tbuf, present, i + 1, ac, str_pos)
+      else check_env_fallback(specs, str_buf, str_meta, tbuf, present, i + 1, ac, str_pos)
+    end
+
+  val final_sp2 = check_env_fallback(specs, str_buf, str_meta, tbuf, present, 0, ac, final_sp)
+
   val () = $A.free<int>(subcmds)
 in
   if $AR.gt_int_int(range_err, 0) then let
@@ -860,6 +1040,15 @@ in
     val () = $A.free<byte>(tbuf)
     val () = $A.free<int>(specs)
   in $R.err(0 - group_err) end
+  else if $AR.gt_int_int(choice_err, 0) then let
+    val () = $A.free<byte>(str_buf)
+    val () = $A.free<int>(str_meta)
+    val () = $A.free<int>(int_vals)
+    val () = $A.free<int>(bool_vals)
+    val () = $A.free<int>(present)
+    val () = $A.free<byte>(tbuf)
+    val () = $A.free<int>(specs)
+  in $R.err(1000 + choice_err) end
   else
     $R.ok(parse_result_mk(str_buf, str_meta, int_vals, bool_vals, present,
       ac, final_sp, final_subcmd, tbuf, specs))
