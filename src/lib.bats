@@ -1163,7 +1163,7 @@ implement get_string_copy {l}{n} (r, h, buf, max_len) = let
   val off = if mi >= 0 then if mi < 128 then $A.get<int>(smeta, mi) else 0 else 0
   val mi2 = g1ofg0(idx * 2 + 1)
   val len = if mi2 >= 0 then if mi2 < 128 then $A.get<int>(smeta, mi2) else 0 else 0
-  val copy_len = (if len > max_len then max_len else len): int
+  val copy_len = (if $AR.gt_int_int(len, max_len) then max_len else len): int
   val () = let
     fun loop {lb:agz}{nd:pos}{ls2:agz}{k:nat | k <= nd} .<nd - k>.
       (dst: !$A.arr(byte, lb, nd), src: !$A.arr(byte, ls2, 8192),
