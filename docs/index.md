@@ -1,5 +1,3 @@
-# argparse
+# Documentation
 
-## Modules
-
-- [lib](lib.md)
+- [API Reference](lib.md)
