@@ -17,8 +17,8 @@
 #pub abst@ype bool_val = int
 #pub abst@ype count_val = int
 
-(* Phantom-typed argument handle *)
-#pub abst@ype arg(a:t@ype) = int
+(* Phantom-typed argument handle — concrete wrapper, no $UNSAFE needed *)
+#pub datatype arg(a:t@ype) = arg_mk(a) of (int)
 
 (* ============================================================
    Spec constants
@@ -231,7 +231,7 @@ in @(parser_mk(specs, tbuf, subcmds, ac + 1, tp3, new_pc, sc, gc, pno, pnl, pho,
 implement add_string {ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen, positional) = let
   val kind = if positional then 0 else 1
   val @(p2, idx) = _add_base(p, kind, 0, name, nlen, short_ch, help, hlen, 0)
-in @(p2, $UNSAFE begin $UNSAFE.cast{arg(string_val)}(idx) end) end
+in @(p2, arg_mk{string_val}(idx)) end
 
 implement add_int {ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen, def, mn, mx) = let
   val @(p2, idx) = _add_base(p, 1, 1, name, nlen, short_ch, help, hlen, def)
@@ -239,15 +239,15 @@ implement add_int {ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen, def, mn
   val () = _spec_set(specs, idx, 10, mn)
   val () = _spec_set(specs, idx, 11, mx)
 in @(parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl),
-     $UNSAFE begin $UNSAFE.cast{arg(int_val)}(idx) end) end
+     arg_mk{int_val}(idx)) end
 
 implement add_flag {ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen) = let
   val @(p2, idx) = _add_base(p, 2, 2, name, nlen, short_ch, help, hlen, 0)
-in @(p2, $UNSAFE begin $UNSAFE.cast{arg(bool_val)}(idx) end) end
+in @(p2, arg_mk{bool_val}(idx)) end
 
 implement add_count {ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen) = let
   val @(p2, idx) = _add_base(p, 2, 3, name, nlen, short_ch, help, hlen, 0)
-in @(p2, $UNSAFE begin $UNSAFE.cast{arg(count_val)}(idx) end) end
+in @(p2, arg_mk{count_val}(idx)) end
 
 implement add_subcommand {ln}{nn}{lh}{nh} (p, name, nlen, help, hlen) = let
   val+ ~parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) = p
@@ -1150,7 +1150,7 @@ end
 
 implement get_string_len(r, h) = let
   val+ @parse_result_mk(_, smeta, _, _, _, _, _, _, _, _) = r
-  val idx = $UNSAFE begin $UNSAFE.cast{int}(h) end
+  val+ arg_mk(idx) = h
   val mi = g1ofg0(idx * 2 + 1)
   val len = if mi >= 0 then if mi < 128 then $A.get<int>(smeta, mi) else 0 else 0
   prval () = fold@(r)
@@ -1158,7 +1158,7 @@ in len end
 
 implement get_string_copy {l}{n} (r, h, buf, max_len) = let
   val+ @parse_result_mk(sbuf, smeta, _, _, _, _, _, _, _, _) = r
-  val idx = $UNSAFE begin $UNSAFE.cast{int}(h) end
+  val+ arg_mk(idx) = h
   val mi = g1ofg0(idx * 2)
   val off = if mi >= 0 then if mi < 128 then $A.get<int>(smeta, mi) else 0 else 0
   val mi2 = g1ofg0(idx * 2 + 1)
@@ -1184,28 +1184,32 @@ in copy_len end
 
 implement get_int(r, h) = let
   val+ @parse_result_mk(_, _, ivals, _, _, _, _, _, _, _) = r
-  val idx = g1ofg0($UNSAFE begin $UNSAFE.cast{int}(h) end)
+  val+ arg_mk(idx0) = h
+  val idx = g1ofg0(idx0)
   val v = if idx >= 0 then if idx < 64 then $A.get<int>(ivals, idx) else 0 else 0
   prval () = fold@(r)
 in v end
 
 implement get_bool(r, h) = let
   val+ @parse_result_mk(_, _, _, bvals, _, _, _, _, _, _) = r
-  val idx = g1ofg0($UNSAFE begin $UNSAFE.cast{int}(h) end)
+  val+ arg_mk(idx0) = h
+  val idx = g1ofg0(idx0)
   val v = if idx >= 0 then if idx < 64 then $A.get<int>(bvals, idx) else 0 else 0
   prval () = fold@(r)
 in $AR.gt_int_int(v, 0) end
 
 implement get_count(r, h) = let
   val+ @parse_result_mk(_, _, _, bvals, _, _, _, _, _, _) = r
-  val idx = g1ofg0($UNSAFE begin $UNSAFE.cast{int}(h) end)
+  val+ arg_mk(idx0) = h
+  val idx = g1ofg0(idx0)
   val v = if idx >= 0 then if idx < 64 then $A.get<int>(bvals, idx) else 0 else 0
   prval () = fold@(r)
 in v end
 
 implement is_present {a} (r, h) = let
   val+ @parse_result_mk(_, _, _, _, pres, _, _, _, _, _) = r
-  val idx = g1ofg0($UNSAFE begin $UNSAFE.cast{int}(h) end)
+  val+ arg_mk(idx0) = h
+  val idx = g1ofg0(idx0)
   val v = if idx >= 0 then if idx < 64 then $A.get<int>(pres, idx) else 0 else 0
   prval () = fold@(r)
 in $AR.gt_int_int(v, 0) end
@@ -1227,7 +1231,7 @@ in @(parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc + 1, pno, pnl, pho, phl)
 
 implement add_to_group {a} (p, group_id, handle) = let
   val+ ~parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) = p
-  val idx = $UNSAFE begin $UNSAFE.cast{int}(handle) end
+  val+ arg_mk(idx) = handle
   val () = _spec_set(specs, idx, 15, group_id)
 in parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) end
 
