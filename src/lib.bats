@@ -18,12 +18,8 @@
 #pub abst@ype bool_val = int
 #pub abst@ype count_val = int
 
-(* Phantom-typed argument handle *)
-#pub abst@ype arg(a:t@ype) = int
-
-(* Internal castfns for phantom type conversion — private to this module *)
-castfn _arg_of_int {a:t@ype} (idx: int): arg(a)
-castfn _int_of_arg {a:t@ype} (h: arg(a)): int
+(* Phantom-typed argument handle — concrete wrapper, no unsafety needed *)
+#pub datatype arg(a:t@ype) = arg_mk(a) of (int)
 
 (* ============================================================
    Spec constants
@@ -228,7 +224,7 @@ in @(parser_mk(specs, tbuf, subcmds, ac + 1, tp3, new_pc, sc, gc, pno, pnl, pho,
 implement add_string {tp0}{ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen, positional) = let
   val kind = if positional then 0 else 1
   val @(p2, idx) = _add_base(p, kind, 0, name, nlen, short_ch, help, hlen, 0)
-in @(p2, _arg_of_int{string_val}(idx)) end
+in @(p2, arg_mk{string_val}(idx)) end
 
 implement add_int {tp0}{ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen, def, mn, mx) = let
   val @(p2, idx) = _add_base(p, 1, 1, name, nlen, short_ch, help, hlen, def)
@@ -236,15 +232,15 @@ implement add_int {tp0}{ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen, de
   val () = _spec_set(specs, idx, 10, mn)
   val () = _spec_set(specs, idx, 11, mx)
 in @(parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl),
-     _arg_of_int{int_val}(idx)) end
+     arg_mk{int_val}(idx)) end
 
 implement add_flag {tp0}{ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen) = let
   val @(p2, idx) = _add_base(p, 2, 2, name, nlen, short_ch, help, hlen, 0)
-in @(p2, _arg_of_int{bool_val}(idx)) end
+in @(p2, arg_mk{bool_val}(idx)) end
 
 implement add_count {tp0}{ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, hlen) = let
   val @(p2, idx) = _add_base(p, 2, 3, name, nlen, short_ch, help, hlen, 0)
-in @(p2, _arg_of_int{count_val}(idx)) end
+in @(p2, arg_mk{count_val}(idx)) end
 
 implement add_subcommand {tp0}{ln}{nn}{lh}{nh} (p, name, nlen, help, hlen) = let
   val+ ~parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) = p
@@ -885,14 +881,14 @@ end
 
 implement get_string_len(r, h) = let
   val+ @parse_result_mk(_, smeta, _, _, _, _, _, _, _, _) = r
-  val idx = _int_of_arg(h)
+  val+ arg_mk(idx) = h
   val len = $A.get<int>(smeta, $AR.checked_idx(idx * 2 + 1, 128))
   prval () = fold@(r)
 in len end
 
 implement get_string_copy {l}{n} (r, h, buf, max_len) = let
   val+ @parse_result_mk(sbuf, smeta, _, _, _, _, _, _, _, _) = r
-  val idx = _int_of_arg(h)
+  val+ arg_mk(idx) = h
   val off = $A.get<int>(smeta, $AR.checked_idx(idx * 2, 128))
   val len = $A.get<int>(smeta, $AR.checked_idx(idx * 2 + 1, 128))
   val copy_len = (if $AR.gt_int_int(len, max_len) then max_len else len): int
@@ -911,28 +907,28 @@ in copy_len end
 
 implement get_int(r, h) = let
   val+ @parse_result_mk(_, _, ivals, _, _, _, _, _, _, _) = r
-  val idx = _int_of_arg(h)
+  val+ arg_mk(idx) = h
   val v = $A.get<int>(ivals, $AR.checked_idx(idx, 64))
   prval () = fold@(r)
 in v end
 
 implement get_bool(r, h) = let
   val+ @parse_result_mk(_, _, _, bvals, _, _, _, _, _, _) = r
-  val idx = _int_of_arg(h)
+  val+ arg_mk(idx) = h
   val v = $A.get<int>(bvals, $AR.checked_idx(idx, 64))
   prval () = fold@(r)
 in $AR.gt_int_int(v, 0) end
 
 implement get_count(r, h) = let
   val+ @parse_result_mk(_, _, _, bvals, _, _, _, _, _, _) = r
-  val idx = _int_of_arg(h)
+  val+ arg_mk(idx) = h
   val v = $A.get<int>(bvals, $AR.checked_idx(idx, 64))
   prval () = fold@(r)
 in v end
 
 implement is_present {a} (r, h) = let
   val+ @parse_result_mk(_, _, _, _, pres, _, _, _, _, _) = r
-  val idx = _int_of_arg(h)
+  val+ arg_mk(idx) = h
   val v = $A.get<int>(pres, $AR.checked_idx(idx, 64))
   prval () = fold@(r)
 in $AR.gt_int_int(v, 0) end
@@ -954,7 +950,7 @@ in @(parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc + 1, pno, pnl, pho, phl)
 
 implement add_to_group {tp0}{a} (p, group_id, handle) = let
   val+ ~parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) = p
-  val idx = _int_of_arg(handle)
+  val+ arg_mk(idx) = handle
   val () = _spec_set(specs, idx, 15, group_id)
 in parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) end
 
