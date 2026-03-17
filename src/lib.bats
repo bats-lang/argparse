@@ -159,6 +159,24 @@ stadef SPEC_STRIDE = 16
    Implementation helpers
    ============================================================ *)
 
+fn _to_nat(x: int): [n:nat] int(n) = let
+  val v = g1ofg0(x)
+in
+  if v >= 0 then v else 0
+end
+
+fn _to_byte(x: int): [v:nat | v < 256] int(v) = let
+  val v = g1ofg0(x)
+in
+  if v >= 0 then if v < 256 then v else 0 else 0
+end
+
+fn _idx {n:pos}(x: int, n: int n): [i:nat | i < n] int(i) = let
+  val v = g1ofg0(x)
+in
+  if v >= 0 then if $AR.lt_g1(v, n) then v else 0 else 0
+end
+
 fn _text_write
   {lt:agz}{lb:agz}{n:pos}{p:nat | p + n <= 8192}
   (tbuf: !$A.arr(byte, lt, 8192), pos: int p,
@@ -175,11 +193,11 @@ in pos + len end
 
 fn _spec_set {ls:agz}
   (specs: !$A.arr(int, ls, 1024), idx: int, field: int, v: int): void =
-  $A.set<int>(specs, $AR.checked_idx(idx * 16 + field, 1024), v)
+  $A.set<int>(specs, _idx(idx * 16 + field, 1024), v)
 
 fn _spec_get {ls:agz}
   (specs: !$A.arr(int, ls, 1024), idx: int, field: int): int =
-  $A.get<int>(specs, $AR.checked_idx(idx * 16 + field, 1024))
+  $A.get<int>(specs, _idx(idx * 16 + field, 1024))
 
 (* ============================================================
    Implementations — Construction
@@ -250,10 +268,10 @@ implement add_subcommand {tp0}{ln}{nn}{lh}{nh} (p, name, nlen, help, hlen) = let
   val hoff = tp2
   val tp3 = _text_write(tbuf, tp2, help, hlen)
   val base = si * 4
-  val () = $A.set<int>(subcmds, $AR.checked_idx(base, 64), noff)
-  val () = $A.set<int>(subcmds, $AR.checked_idx(base + 1, 64), nlen)
-  val () = $A.set<int>(subcmds, $AR.checked_idx(base + 2, 64), hoff)
-  val () = $A.set<int>(subcmds, $AR.checked_idx(base + 3, 64), hlen)
+  val () = $A.set<int>(subcmds, _idx(base, 64), noff)
+  val () = $A.set<int>(subcmds, _idx(base + 1, 64), nlen)
+  val () = $A.set<int>(subcmds, _idx(base + 2, 64), hoff)
+  val () = $A.set<int>(subcmds, _idx(base + 3, 64), hlen)
 in @(parser_mk(specs, tbuf, subcmds, ac, tp3, pc, sc + 1, gc, pno, pnl, pho, phl), si) end
 
 (* ============================================================
@@ -265,15 +283,15 @@ fn _bytes_eq
   {la:agz}{na:pos}{lt:agz}
   (argv: !$A.borrow(byte, la, na), av_off: int, av_len: int na,
    tbuf: !$A.arr(byte, lt, 8192), tb_off: int, cmp_len: int): bool = let
-  val cl = $AR.checked_nat(cmp_len)
+  val cl = _to_nat(cmp_len)
   fun loop {la2:agz}{na2:pos}{lt2:agz}{nn:nat}{i:nat | i <= nn} .<nn - i>.
     (argv: !$A.borrow(byte, la2, na2), av_len: int na2,
      tbuf: !$A.arr(byte, lt2, 8192),
      ao: int, to: int, n: int nn, i: int i): bool =
     if i >= n then true
     else let
-      val ab = byte2int0($A.read<byte>(argv, $AR.checked_idx(ao + i, na2)))
-      val tb = byte2int0($A.get<byte>(tbuf, $AR.checked_idx(to + i, 8192)))
+      val ab = byte2int0($A.read<byte>(argv, _idx(ao + i, av_len)))
+      val tb = byte2int0($A.get<byte>(tbuf, _idx(to + i, 8192)))
     in
       if $AR.eq_int_int(ab, tb) then loop(argv, av_len, tbuf, ao, to, n, i + 1)
       else false
@@ -331,7 +349,7 @@ fun _parse_int
     if fuel <= 0 then @(acc, true)
     else if i >= len then @(acc, true)
     else let
-      val b = byte2int0($A.read<byte>(argv, $AR.checked_idx(off + i, av_len)))
+      val b = byte2int0($A.read<byte>(argv, _idx(off + i, av_len)))
     in
       if b >= 48 then
         if b <= 57 then
@@ -342,12 +360,12 @@ fun _parse_int
 in
   if len <= 0 then @(0, false)
   else let
-    val first = byte2int0($A.read<byte>(argv, $AR.checked_idx(off, av_len)))
+    val first = byte2int0($A.read<byte>(argv, _idx(off, av_len)))
   in
     if $AR.eq_int_int(first, 45) then let
-      val @(v, ok) = digit_loop(argv, off + 1, len - 1, av_len, 0, 0, $AR.checked_nat(len))
+      val @(v, ok) = digit_loop(argv, off + 1, len - 1, av_len, 0, 0, _to_nat(len))
     in @(0 - v, ok) end
-    else digit_loop(argv, off, len, av_len, 0, 0, $AR.checked_nat(len))
+    else digit_loop(argv, off, len, av_len, 0, 0, _to_nat(len))
   end
 end
 
@@ -357,17 +375,17 @@ fn _store_str
   (argv: !$A.borrow(byte, la, na), av_off: int, val_len: int, av_len: int na,
    str_buf: !$A.arr(byte, ls, 8192), str_meta: !$A.arr(int, lm, 128),
    idx: int, str_pos: int): int = let
-  val vl = $AR.checked_nat(val_len)
+  val vl = _to_nat(val_len)
   fun copy {la2:agz}{na2:pos}{ls2:agz}{nn:nat}{i:nat | i <= nn} .<nn - i>.
     (src: !$A.borrow(byte, la2, na2), dst: !$A.arr(byte, ls2, 8192),
      av_len: int na2, ao: int, sp: int, n: int nn, i: int i): void =
     if i >= n then ()
     else let
-      val () = $A.set<byte>(dst, $AR.checked_idx(sp + i, 8192), $A.read<byte>(src, $AR.checked_idx(ao + i, na2)))
+      val () = $A.set<byte>(dst, _idx(sp + i, 8192), $A.read<byte>(src, _idx(ao + i, av_len)))
     in copy(src, dst, av_len, ao, sp, n, i + 1) end
   val () = copy(argv, str_buf, av_len, av_off, str_pos, vl, 0)
-  val () = $A.set<int>(str_meta, $AR.checked_idx(idx * 2, 128), str_pos)
-  val () = $A.set<int>(str_meta, $AR.checked_idx(idx * 2 + 1, 128), val_len)
+  val () = $A.set<int>(str_meta, _idx(idx * 2, 128), str_pos)
+  val () = $A.set<int>(str_meta, _idx(idx * 2 + 1, 128), val_len)
 in str_pos + val_len end
 
 (* Find end of a null-terminated token in argv *)
@@ -377,7 +395,7 @@ fun _find_tok_end
   if f <= 0 then pos
   else if pos >= av_len then pos
   else let
-    val p1 = $AR.checked_idx(pos, av_len)
+    val p1 = _idx(pos, av_len)
   in
     if $AR.eq_int_int(byte2int0($A.read<byte>(argv, p1)), 0) then pos
     else _find_tok_end(argv, pos + 1, av_len, f - 1)
@@ -402,13 +420,13 @@ fun _find_pos_spec
 fn _mark_present
   {lp:agz}
   (present: !$A.arr(int, lp, 64), idx: int): void =
-  $A.set<int>(present, $AR.checked_idx(idx, 64), 1)
+  $A.set<int>(present, _idx(idx, 64), 1)
 
 (* Increment a bool/count value *)
 fn _inc_bool
   {lb:agz}
   (bool_vals: !$A.arr(int, lb, 64), idx: int): void = let
-  val pi = $AR.checked_idx(idx, 64)
+  val pi = _idx(idx, 64)
   val cur = $A.get<int>(bool_vals, pi)
 in $A.set<int>(bool_vals, pi, cur + 1) end
 
@@ -416,7 +434,7 @@ in $A.set<int>(bool_vals, pi, cur + 1) end
 fn _set_int_val
   {li:agz}
   (int_vals: !$A.arr(int, li, 64), idx: int, v: int): void =
-  $A.set<int>(int_vals, $AR.checked_idx(idx, 64), v)
+  $A.set<int>(int_vals, _idx(idx, 64), v)
 
 (* Process a known option (long or short) given its spec index.
    Returns @(pos_idx, str_pos, next_av_pos, next_tok_num, subcmd_idx). *)
@@ -444,7 +462,7 @@ in
     val np2 = ve + 1
   in
     if $AR.eq_int_int(vtype, 1) then let
-      val @(iv, _) = _parse_int(argv, vs, vl, av_len, $AR.checked_nat(if vl > 0 then vl else 0))
+      val @(iv, _) = _parse_int(argv, vs, vl, av_len, _to_nat(if vl > 0 then vl else 0))
       val () = _set_int_val(int_vals, idx, iv)
     in @(pos_idx, str_pos, np2, tok_num + 2, subcmd_idx) end
     else let
@@ -458,10 +476,10 @@ fn _classify_token
   {la:agz}{na:pos}
   (argv: !$A.borrow(byte, la, na), av_len: int na,
    tok_start: int, tok_len: int): int = let
-  val b0 = byte2int0($A.read<byte>(argv, $AR.checked_idx(tok_start, av_len)))
+  val b0 = byte2int0($A.read<byte>(argv, _idx(tok_start, av_len)))
 in
   if $AR.eq_int_int(b0, 45) then let
-    val b1 = byte2int0($A.read<byte>(argv, $AR.checked_idx(tok_start + 1, av_len)))
+    val b1 = byte2int0($A.read<byte>(argv, _idx(tok_start + 1, av_len)))
   in
     if $AR.eq_int_int(b1, 45) then 1
     else 2
@@ -473,7 +491,7 @@ end
 fn _get_short_char
   {la:agz}{na:pos}
   (argv: !$A.borrow(byte, la, na), av_len: int na, tok_start: int): int =
-  byte2int0($A.read<byte>(argv, $AR.checked_idx(tok_start + 1, av_len)))
+  byte2int0($A.read<byte>(argv, _idx(tok_start + 1, av_len)))
 
 (* Simple edit distance between two byte sequences in different buffers.
    Used for "did you mean?" suggestions. O(n*m) but names are short. *)
@@ -486,8 +504,8 @@ fun _edit_dist
   else if a_len <= 0 then b_len
   else if b_len <= 0 then a_len
   else let
-    val ac = byte2int0($A.read<byte>(argv, $AR.checked_idx(a_off, av_len)))
-    val bc = byte2int0($A.get<byte>(tbuf, $AR.checked_idx(b_off, 8192)))
+    val ac = byte2int0($A.read<byte>(argv, _idx(a_off, av_len)))
+    val bc = byte2int0($A.get<byte>(tbuf, _idx(b_off, 8192)))
     val cost = if $AR.eq_int_int(ac, bc) then 0 else 1
     val d1 = $AR.add_int_int(_edit_dist(argv, a_off + 1, a_len - 1, av_len, tbuf, b_off, b_len, fuel - 1), 1)
     val d2 = $AR.add_int_int(_edit_dist(argv, a_off, a_len, av_len, tbuf, b_off + 1, b_len - 1, fuel - 1), 1)
@@ -510,7 +528,7 @@ fun _find_closest
       val snoff = _spec_get(specs, i, 2)
       val snlen = _spec_get(specs, i, 3)
       val d = _edit_dist(argv, name_off, name_len, av_len, tbuf, snoff, snlen,
-        $AR.checked_nat((name_len + snlen) * 3))
+        _to_nat((name_len + snlen) * 3))
     in
       if $AR.lt_int_int(d, best_dist) then
         _find_closest(argv, name_off, name_len, av_len, specs, tbuf, ac, i + 1, i, d, fuel - 1)
@@ -582,7 +600,7 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
         if $AR.eq_int_int(cls, 1) then let (* long option *)
           val name_off = tok_start + 2
           val name_len = tok_len - 2
-          val opt_idx = _find_by_name(argv, name_off, name_len, av_len, specs, tbuf, ac, 0, $AR.checked_nat(ac))
+          val opt_idx = _find_by_name(argv, name_off, name_len, av_len, specs, tbuf, ac, 0, _to_nat(ac))
         in
           case+ opt_idx of
           | ~$R.some(idx) => let
@@ -595,7 +613,7 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
             end
           | ~$R.none() => let
               val closest = _find_closest(argv, name_off, name_len, av_len,
-                specs, tbuf, ac, 0, ~1, 999, $AR.checked_nat(ac))
+                specs, tbuf, ac, 0, ~1, 999, _to_nat(ac))
             in
               if closest >= 0 then @(str_pos, subcmd_idx, 3000 + closest)
               else @(str_pos, subcmd_idx, 3000)
@@ -603,7 +621,7 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
         end
         else if $AR.eq_int_int(cls, 2) then let (* short option *)
           val ch = _get_short_char(argv, av_len, tok_start)
-          val opt_idx = _find_by_short(specs, ch, ac, 0, $AR.checked_nat(ac))
+          val opt_idx = _find_by_short(specs, ch, ac, 0, _to_nat(ac))
         in
           case+ opt_idx of
           | ~$R.some(idx) => let
@@ -618,7 +636,7 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
               @(str_pos, subcmd_idx, 4000 + ch)
         end
         else if $AR.eq_int_int(cls, 3) then let (* positional *)
-          val opt_pidx = _find_pos_spec(specs, ac, 0, pos_idx, $AR.checked_nat(ac))
+          val opt_pidx = _find_pos_spec(specs, ac, 0, pos_idx, _to_nat(ac))
         in
           case+ opt_pidx of
           | ~$R.some(pidx) => let
@@ -644,7 +662,7 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
 
   val @(final_sp, final_subcmd, err) =
     scan_argv(argv, argv_len, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
-      ac, 0, 0, start_pos, 1, argc, ~1, $AR.checked_nat(argc * 2))
+      ac, 0, 0, start_pos, 1, argc, ~1, _to_nat(argc * 2))
 
   val scan_err = err
 
@@ -720,8 +738,8 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
     else if s_len <= 0 then true
     else if c_len <= 0 then true
     else let
-      val sb = byte2int0($A.get<byte>(str_buf, $AR.checked_idx(s_off, 8192)))
-      val cb = byte2int0($A.get<byte>(tbuf, $AR.checked_idx(c_off, 8192)))
+      val sb = byte2int0($A.get<byte>(str_buf, _idx(s_off, 8192)))
+      val cb = byte2int0($A.get<byte>(tbuf, _idx(c_off, 8192)))
     in
       if $AR.eq_int_int(sb, cb) then
         _check_str_match(str_buf, s_off + 1, s_len - 1, tbuf, c_off + 1, c_len - 1, fuel - 1)
@@ -741,13 +759,13 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
         if f <= 0 then pos
         else if pos >= limit then pos
         else
-          if $AR.eq_int_int(byte2int0($A.get<byte>(tbuf, $AR.checked_idx(pos, 8192))), 0) then pos
+          if $AR.eq_int_int(byte2int0($A.get<byte>(tbuf, _idx(pos, 8192))), 0) then pos
           else _find_choice_end(tbuf, pos + 1, limit, f - 1)
-      val ce = _find_choice_end(tbuf, c_off, c_off + c_total_len, $AR.checked_nat(c_total_len))
+      val ce = _find_choice_end(tbuf, c_off, c_off + c_total_len, _to_nat(c_total_len))
       val clen = ce - c_off
     in
       if $AR.eq_int_int(clen, s_len) then
-        if _check_str_match(str_buf, s_off, s_len, tbuf, c_off, clen, $AR.checked_nat(clen)) then true
+        if _check_str_match(str_buf, s_off, s_len, tbuf, c_off, clen, _to_nat(clen)) then true
         else _check_one_choice(str_buf, s_off, s_len, tbuf, ce + 1, c_total_len - clen - 1, choice_count, ci + 1, fuel - 1)
       else _check_one_choice(str_buf, s_off, s_len, tbuf, ce + 1, c_total_len - clen - 1, choice_count, ci + 1, fuel - 1)
     end
@@ -768,11 +786,11 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
           val pv = $A.get<int>(present, i)
         in
           if $AR.gt_int_int(pv, 0) then let
-            val s_off = $A.get<int>(str_meta, $AR.checked_idx(i * 2, 128))
-            val s_len = $A.get<int>(str_meta, $AR.checked_idx(i * 2 + 1, 128))
+            val s_off = $A.get<int>(str_meta, _idx(i * 2, 128))
+            val s_len = $A.get<int>(str_meta, _idx(i * 2 + 1, 128))
             val c_off = _spec_get(specs, i, 12)
             val c_len = _spec_get(specs, i, 13)
-            val ok = _check_one_choice(str_buf, s_off, s_len, tbuf, c_off, c_len, cc, 0, $AR.checked_nat(cc))
+            val ok = _check_one_choice(str_buf, s_off, s_len, tbuf, c_off, c_len, cc, 0, _to_nat(cc))
           in
             if ok then check_choices(specs, str_buf, str_meta, tbuf, present, i + 1, ac)
             else i + 1
@@ -809,34 +827,34 @@ implement parse {tp0}{la}{na} (p, argv, argv_len, argc) = let
               if $AR.eq_int_int(cc, 0) then let
                 val env_name = $A.alloc<byte>(256)
                 val elen2 = if e_len > 255 then 255 else e_len
-                val el = $AR.checked_nat(elen2)
+                val el = _to_nat(elen2)
                 fun _copy_ename {lt2:agz}{le2:agz}{nn:nat}{i:nat | i <= nn} .<nn - i>.
                   (tbuf: !$A.arr(byte, lt2, 8192), ebuf: !$A.arr(byte, le2, 256),
                    s: int, n: int nn, i: int i): void =
                   if i >= n then ()
                   else let
-                    val () = $A.set<byte>(ebuf, $AR.checked_idx(i, 256), $A.get<byte>(tbuf, $AR.checked_idx(s + i, 8192)))
+                    val () = $A.set<byte>(ebuf, _idx(i, 256), $A.get<byte>(tbuf, _idx(s + i, 8192)))
                   in _copy_ename(tbuf, ebuf, s, n, i + 1) end
                 val () = _copy_ename(tbuf, env_name, e_off, el, 0)
-                val () = $A.set<byte>(env_name, $AR.checked_idx(elen2, 256), $A.int2byte($AR.checked_byte(0)))
+                val () = $A.set<byte>(env_name, _idx(elen2, 256), $A.int2byte(_to_byte(0)))
                 val env_val = $A.alloc<byte>(4096)
                 val env_result = $E.get_cstr(env_name, env_val, 4096)
                 val () = $A.free<byte>(env_name)
               in
                 case+ env_result of
                 | ~$R.some(env_len) => let
-                    val el2 = $AR.checked_nat(env_len)
+                    val el2 = _to_nat(env_len)
                     fun copy_val {ls2:agz}{le2:agz}{nn:nat}{i:nat | i <= nn} .<nn - i>.
                       (dst: !$A.arr(byte, ls2, 8192), src: !$A.arr(byte, le2, 4096),
                        d: int, n: int nn, i: int i): void =
                       if i >= n then ()
                       else let
-                        val () = $A.set<byte>(dst, $AR.checked_idx(d + i, 8192), $A.get<byte>(src, $AR.checked_idx(i, 4096)))
+                        val () = $A.set<byte>(dst, _idx(d + i, 8192), $A.get<byte>(src, _idx(i, 4096)))
                       in copy_val(dst, src, d, n, i + 1) end
                     val () = copy_val(str_buf, env_val, str_pos, el2, 0)
                     val () = $A.free<byte>(env_val)
-                    val () = $A.set<int>(str_meta, $AR.checked_idx(i * 2, 128), str_pos)
-                    val () = $A.set<int>(str_meta, $AR.checked_idx(i * 2 + 1, 128), env_len)
+                    val () = $A.set<int>(str_meta, _idx(i * 2, 128), str_pos)
+                    val () = $A.set<int>(str_meta, _idx(i * 2 + 1, 128), env_len)
                     val () = $A.set<int>(present, i, 1)
                   in check_env_fallback(specs, str_buf, str_meta, tbuf, present, i + 1, ac, str_pos + env_len) end
                 | ~$R.none() => let
@@ -882,24 +900,24 @@ end
 implement get_string_len(r, h) = let
   val+ @parse_result_mk(_, smeta, _, _, _, _, _, _, _, _) = r
   val+ arg_mk(idx) = h
-  val len = $A.get<int>(smeta, $AR.checked_idx(idx * 2 + 1, 128))
+  val len = $A.get<int>(smeta, _idx(idx * 2 + 1, 128))
   prval () = fold@(r)
 in len end
 
 implement get_string_copy {l}{n} (r, h, buf, max_len) = let
   val+ @parse_result_mk(sbuf, smeta, _, _, _, _, _, _, _, _) = r
   val+ arg_mk(idx) = h
-  val off = $A.get<int>(smeta, $AR.checked_idx(idx * 2, 128))
-  val len = $A.get<int>(smeta, $AR.checked_idx(idx * 2 + 1, 128))
+  val off = $A.get<int>(smeta, _idx(idx * 2, 128))
+  val len = $A.get<int>(smeta, _idx(idx * 2 + 1, 128))
   val copy_len = (if $AR.gt_int_int(len, max_len) then max_len else len): int
-  val cl = $AR.checked_nat(copy_len)
+  val cl = _to_nat(copy_len)
   val () = let
     fun loop {lb:agz}{nd:pos}{ls2:agz}{nn:nat}{i:nat | i <= nn} .<nn - i>.
       (dst: !$A.arr(byte, lb, nd), src: !$A.arr(byte, ls2, 8192),
        nd: int nd, o: int, n: int nn, i: int i): void =
       if i >= n then ()
       else let
-        val () = $A.set<byte>(dst, $AR.checked_idx(i, nd), $A.get<byte>(src, $AR.checked_idx(o + i, 8192)))
+        val () = $A.set<byte>(dst, _idx(i, nd), $A.get<byte>(src, _idx(o + i, 8192)))
       in loop(dst, src, nd, o, n, i + 1) end
   in loop(buf, sbuf, max_len, off, cl, 0) end
   prval () = fold@(r)
@@ -908,28 +926,28 @@ in copy_len end
 implement get_int(r, h) = let
   val+ @parse_result_mk(_, _, ivals, _, _, _, _, _, _, _) = r
   val+ arg_mk(idx) = h
-  val v = $A.get<int>(ivals, $AR.checked_idx(idx, 64))
+  val v = $A.get<int>(ivals, _idx(idx, 64))
   prval () = fold@(r)
 in v end
 
 implement get_bool(r, h) = let
   val+ @parse_result_mk(_, _, _, bvals, _, _, _, _, _, _) = r
   val+ arg_mk(idx) = h
-  val v = $A.get<int>(bvals, $AR.checked_idx(idx, 64))
+  val v = $A.get<int>(bvals, _idx(idx, 64))
   prval () = fold@(r)
 in $AR.gt_int_int(v, 0) end
 
 implement get_count(r, h) = let
   val+ @parse_result_mk(_, _, _, bvals, _, _, _, _, _, _) = r
   val+ arg_mk(idx) = h
-  val v = $A.get<int>(bvals, $AR.checked_idx(idx, 64))
+  val v = $A.get<int>(bvals, _idx(idx, 64))
   prval () = fold@(r)
 in v end
 
 implement is_present {a} (r, h) = let
   val+ @parse_result_mk(_, _, _, _, pres, _, _, _, _, _) = r
   val+ arg_mk(idx) = h
-  val v = $A.get<int>(pres, $AR.checked_idx(idx, 64))
+  val v = $A.get<int>(pres, _idx(idx, 64))
   prval () = fold@(r)
 in $AR.gt_int_int(v, 0) end
 
@@ -961,10 +979,10 @@ in parser_mk(specs, tbuf, subcmds, ac, tp, pc, sc, gc, pno, pnl, pho, phl) end
 fn _help_put
   {l:agz}{n:pos}
   (buf: !$A.arr(byte, l, n), pos: int, b: int, max_len: int n): int = let
-  val p = $AR.checked_nat(pos)
+  val p = _to_nat(pos)
 in
   if p < max_len then let
-    val () = $A.set<byte>(buf, p, $A.int2byte($AR.checked_byte(
+    val () = $A.set<byte>(buf, p, $A.int2byte(_to_byte(
       if b >= 0 then if b < 256 then b else 63 else 63)))
   in pos + 1 end
   else pos
@@ -975,15 +993,15 @@ fn _help_copy
   (buf: !$A.arr(byte, l, n), dst: int,
    tbuf: !$A.arr(byte, lt, 8192), src: int, len: int,
    max_len: int n): int = let
-  val cl = $AR.checked_nat(len)
+  val cl = _to_nat(len)
   fun loop {l2:agz}{n2:pos}{lt2:agz}{nn:nat}{i:nat | i <= nn} .<nn - i>.
     (buf: !$A.arr(byte, l2, n2), tbuf: !$A.arr(byte, lt2, 8192),
      max_len: int n2, d: int, s: int, n: int nn, i: int i): int =
     if i >= n then d + i
-    else let val di = $AR.checked_nat(d + i) in
+    else let val di = _to_nat(d + i) in
       if di < max_len then let
-        val b = byte2int0($A.get<byte>(tbuf, $AR.checked_idx(s + i, 8192)))
-        val () = $A.set<byte>(buf, di, $A.int2byte($AR.checked_byte(
+        val b = byte2int0($A.get<byte>(tbuf, _idx(s + i, 8192)))
+        val () = $A.set<byte>(buf, di, $A.int2byte(_to_byte(
           if b >= 0 then if b < 256 then b else 0 else 0)))
       in loop(buf, tbuf, max_len, d, s, n, i + 1) end
       else d + i
