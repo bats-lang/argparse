@@ -1,0 +1,9 @@
+[package]
+name = "typo"
+kind = "bin"
+
+[dependencies]
+"argparse" = ""
+"array" = ""
+"result" = ""
+"str" = ""

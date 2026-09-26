@@ -6,5 +6,4 @@ unsafe = false
 [dependencies]
 "arith" = ""
 "array" = ""
-"env" = ""
 "result" = ""

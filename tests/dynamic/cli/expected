@@ -1,0 +1,16 @@
+full: file=in.txt/6 out=out.bin/7 jobs=4! v d=2 sub=-1
+  help 128 [Usage:\n\n  file  input\n  -o, --out  output\n  -j, --jobs  workers\n  -v, --verbose  chatty\n  -d, --debug  more\n  -q, --quiet  hush\n]
+defaults: file=(absent)/0 out=(absent)/0 jobs=1 d=0 sub=-1
+  help 20 [Usage:\n\n  file  inpu]
+typo: unknown long 2
+far: unknown long 1
+short: unknown short 120
+range-hi: file=(absent)/0 out=(absent)/0 jobs=9! d=0 sub=-1
+range-neg: file=(absent)/0 out=(absent)/0 jobs=-5! d=0 sub=-1
+bad-int: file=(absent)/0 out=(absent)/0 jobs=0! d=0 sub=-1
+no-value: file=(absent)/0 out=/0 jobs=1 d=0 sub=-1
+long-out: file=(absent)/0 out=hello world/11 jobs=1 d=0 sub=-1
+extra-pos: file=a/1 out=(absent)/0 jobs=1 d=0 sub=3
+empty-tok: file=in/2 out=(absent)/0 jobs=1 d=0 sub=-1
+dash: unknown short 0
+argc-short: file=in/2 out=(absent)/0 jobs=1 d=0 sub=-1
