@@ -5,12 +5,16 @@ defaults: file=(absent)/0 out=(absent)/0 jobs=1 d=0 sub=-1
 typo: unknown long 2
 far: unknown long 1
 short: unknown short 120
-range-hi: file=(absent)/0 out=(absent)/0 jobs=9! d=0 sub=-1
-range-neg: file=(absent)/0 out=(absent)/0 jobs=-5! d=0 sub=-1
-bad-int: file=(absent)/0 out=(absent)/0 jobs=0! d=0 sub=-1
+range-hi: range 3
+range-neg: range 3
+bad-int: range 3
 no-value: file=(absent)/0 out=/0 jobs=1 d=0 sub=-1
 long-out: file=(absent)/0 out=hello world/11 jobs=1 d=0 sub=-1
 extra-pos: file=a/1 out=(absent)/0 jobs=1 d=0 sub=3
 empty-tok: file=in/2 out=(absent)/0 jobs=1 d=0 sub=-1
 dash: unknown short 0
 argc-short: file=in/2 out=(absent)/0 jobs=1 d=0 sub=-1
+range-lo: range 3
+range-edge: file=(absent)/0 out=(absent)/0 jobs=8! d=0 sub=-1
+excl: exclusive 1
+excl-one: file=in/2 out=(absent)/0 jobs=1 q d=1 sub=-1

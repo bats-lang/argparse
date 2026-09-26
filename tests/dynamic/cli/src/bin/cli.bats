@@ -104,6 +104,9 @@ fn _run {na:pos | na <= 1048576} (label: string, av: &(@[char][na]), na: int na,
   var n6 = @[char][5]('q', 'u', 'i', 'e', 't')
   var h6 = @[char][4]('h', 'u', 's', 'h')
   val @(p, hq) = _flag(p, n6, 5, 113, h6, 4)
+  val @(p, g) = $AP.add_exclusive_group(p)
+  val p = $AP.add_to_group(p, g, hv)
+  val p = $AP.add_to_group(p, g, hq)
   val @(fa, ba) = $A.freeze<byte>($S.from_char_array(av, na))
   val res = $AP.parse(p, ba, na, argc)
   val () = $A.drop<byte>(fa, ba)
@@ -163,5 +166,13 @@ implement main0 () = let
   val () = _run("dash", a12, 7, 2, 0)
   var a13 = @[char][11]('p', 'r', 'o', 'g', '\000', 'i', 'n', '\000', '-', 'v', '\000')
   val () = _run("argc-short", a13, 11, 2, 0)
+  var a14 = @[char][14]('p', 'r', 'o', 'g', '\000', '-', '-', 'j', 'o', 'b', 's', '\000', '0', '\000')
+  val () = _run("range-lo", a14, 14, 3, 0)
+  var a15 = @[char][10]('p', 'r', 'o', 'g', '\000', '-', 'j', '\000', '8', '\000')
+  val () = _run("range-edge", a15, 10, 3, 0)
+  var a16 = @[char][11]('p', 'r', 'o', 'g', '\000', '-', 'v', '\000', '-', 'q', '\000')
+  val () = _run("excl", a16, 11, 3, 0)
+  var a17 = @[char][14]('p', 'r', 'o', 'g', '\000', 'i', 'n', '\000', '-', 'q', '\000', '-', 'd', '\000')
+  val () = _run("excl-one", a17, 14, 4, 0)
 in end
 
