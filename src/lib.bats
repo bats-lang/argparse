@@ -626,7 +626,8 @@ implement parse {tp0}{ac0}{la}{na} (p, argv, argv_len, argc) = let
     scan_argv(argv, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
       0, 0, first_end + 1, 1, ~1)
 
-  (* Int range validation. Only a (0, max) range is checked, as before. *)
+  (* Int range validation: a present int argument must lie in
+     [min, max] unless both are 0 (no range). *)
   fun check_ranges {ls:agz}{li:agz}{lp:agz}{k:nat | k <= ac0} .<ac0 - k>.
     (specs: !$A.arr(int, ls, 1024), int_vals: !$A.arr(int, li, 64),
      present: !$A.arr(int, lp, 64), i: int k): int =
@@ -636,8 +637,7 @@ implement parse {tp0}{ac0}{la}{na} (p, argv, argv_len, argc) = let
       val mn = _spec_get(specs, i, 10)
       val mx = _spec_get(specs, i, 11)
     in
-      if mn != 0 then check_ranges(specs, int_vals, present, i + 1)
-      else if mx = 0 then check_ranges(specs, int_vals, present, i + 1)
+      if mn = 0 && mx = 0 then check_ranges(specs, int_vals, present, i + 1)
       else if $A.get<int>(present, i) <= 0 then check_ranges(specs, int_vals, present, i + 1)
       else let
         val v = $A.get<int>(int_vals, i)
