@@ -1,0 +1,9 @@
+[package]
+name = "cli"
+kind = "bin"
+
+[dependencies]
+"argparse" = ""
+"array" = ""
+"result" = ""
+"str" = ""

@@ -1,0 +1,7 @@
+[package]
+name = "one-too-many"
+kind = "lib"
+
+[dependencies]
+"argparse" = ""
+"array" = ""

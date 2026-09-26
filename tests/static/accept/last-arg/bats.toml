@@ -1,0 +1,7 @@
+[package]
+name = "last-arg"
+kind = "lib"
+
+[dependencies]
+"argparse" = ""
+"array" = ""
