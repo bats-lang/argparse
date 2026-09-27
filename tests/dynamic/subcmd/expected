@@ -1,0 +1,10 @@
+run: sub=0 (run) file=(absent)/0
+build: sub=1 (build) file=(absent)/0
+none: sub=-1 file=(absent)/0
+  help 74 [Usage:\n\n  run  runs\n  file  input\n  build  builds\n  -v, --verbose  chatty\n]
+flag-first: sub=1 (build) file=x.txt/5 v
+pos-first: sub=0 (run) file=x.txt/5
+twice: sub=0 (run) file=build/5
+not-sub: sub=-1 file=nope/4
+choice: choice 2
+as-option: unknown long 3

@@ -10,7 +10,7 @@ range-neg: range 3
 bad-int: range 3
 no-value: file=(absent)/0 out=/0 jobs=1 d=0 sub=-1
 long-out: file=(absent)/0 out=hello world/11 jobs=1 d=0 sub=-1
-extra-pos: file=a/1 out=(absent)/0 jobs=1 d=0 sub=3
+extra-pos: file=a/1 out=(absent)/0 jobs=1 d=0 sub=-1
 empty-tok: file=in/2 out=(absent)/0 jobs=1 d=0 sub=-1
 dash: unknown short 0
 argc-short: file=in/2 out=(absent)/0 jobs=1 d=0 sub=-1
