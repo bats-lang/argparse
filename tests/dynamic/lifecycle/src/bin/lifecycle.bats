@@ -7,9 +7,8 @@
 (* Runs a parser through its whole life and frees everything it made:
    a parse that succeeds (a subcommand, help formatted, the result
    freed), a parse that fails (the error freed) and a parser freed
-   unparsed. It runs under valgrind: no block may be lost. It adds no
-   string, int, flag or count arguments: their arg handles are boxed
-   and never freed (see the other tests). Exits 1 on a wrong outcome. *)
+   unparsed. It runs under valgrind: no block may be lost. Exits 1 on a
+   wrong outcome. *)
 fn new_parser (): $AP.parser(8, 0) = let
   var pn = @[char][4]('p', 'r', 'o', 'g')
   var ph = @[char][4]('h', 'e', 'l', 'p')
