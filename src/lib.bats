@@ -78,6 +78,10 @@ stadef SPEC_STRIDE = 16
   | err_unknown_short of (int)
   | err_range of (int)
   | err_exclusive of (int)
+  (* A positional token named no subcommand, while subcommands are
+     registered, none was given yet and no positional argument was left
+     to take it; carries the token's number in argv (the program name
+     is token 0). *)
   | err_choice of (int)
   (* String values did not fit the 8192-byte value buffer; carries the
      spec index + 1 of the value that overflowed. *)
@@ -114,10 +118,13 @@ stadef SPEC_STRIDE = 16
   (p: parser(tp, ac), name: !$A.borrow(byte, ln, nn), nlen: int nn,
    short_ch: int, help: !$A.borrow(byte, lh, nh), hlen: int nh): @(parser(tp + nn + nh, ac + 1), arg(count_val))
 
+(* Registers a subcommand; returns its index (0 for the first one, 1
+   for the next, ...), which get_subcmd gives back when it is chosen.
+   A subcommand takes one of the 64 argument slots. *)
 #pub fn add_subcommand
-  {tp:nat | tp <= 8192}{ac:nat | ac <= 64}{ln:agz}{nn:pos}{lh:agz}{nh:pos | tp + nn + nh <= 8192}
+  {tp:nat | tp <= 8192}{ac:nat | ac < 64}{ln:agz}{nn:pos}{lh:agz}{nh:pos | tp + nn + nh <= 8192}
   (p: parser(tp, ac), name: !$A.borrow(byte, ln, nn), nlen: int nn,
-   help: !$A.borrow(byte, lh, nh), hlen: int nh): @(parser(tp + nn + nh, ac), int)
+   help: !$A.borrow(byte, lh, nh), hlen: int nh): @(parser(tp + nn + nh, ac + 1), int)
 
 (* ============================================================
    API — Parsing
@@ -147,6 +154,9 @@ stadef SPEC_STRIDE = 16
 
 #pub fn is_present {a:t@ype} (r: !parse_result, h: arg(a)): bool
 
+(* The index add_subcommand returned for the subcommand argv chose, or
+   ~1 when it chose none. The first positional token that names a
+   subcommand chooses it; later tokens are ordinary positionals. *)
 #pub fn get_subcmd(r: !parse_result): int
 
 (* ============================================================
@@ -276,11 +286,14 @@ implement add_count {tp0}{ac0}{ln}{nn}{lh}{nh} (p, name, nlen, short_ch, help, h
   val @(p2, idx) = _add_base(p, 2, 3, name, nlen, short_ch, help, hlen, 0)
 in @(p2, (kind_count() | idx)) end
 
+(* A subcommand is a spec of kind ~1 (neither positional nor option,
+   so no option or positional search finds it) whose field 8 holds its
+   subcommand index. *)
 implement add_subcommand {tp0}{ac0}{ln}{nn}{lh}{nh} (p, name, nlen, help, hlen) = let
-  val+ ~parser_mk(specs, tbuf, ac, tp, gc, sc, pno, pnl, pho, phl) = p
-  val tp2 = _text_write(tbuf, tp, name, nlen)
-  val tp3 = _text_write(tbuf, tp2, help, hlen)
-in @(parser_mk(specs, tbuf, ac, tp3, gc, sc + 1, pno, pnl, pho, phl), sc) end
+  val @(p2, idx) = _add_base(p, ~1, ~1, name, nlen, ~1, help, hlen, 0)
+  val+ ~parser_mk(specs, tbuf, ac, tp, gc, sc, pno, pnl, pho, phl) = p2
+  val () = _spec_set(specs, idx, 8, sc)
+in @(parser_mk(specs, tbuf, ac, tp, gc, sc + 1, pno, pnl, pho, phl), sc) end
 
 (* ============================================================
    Implementations — Parse
@@ -346,6 +359,28 @@ fn _find_pos_spec
       else loop(specs, i + 1, pi - 1)
     else loop(specs, i + 1, pi)
 in loop(specs, 0, pi) end
+
+(* Subcommand index of the subcommand (kind ~1) named
+   argv[off, off + len); ~1 if none. *)
+fn _find_subcmd
+  {la:agz}{na:pos}{ls:agz}{lt:agz}{ac:nat | ac <= 64}{o:nat}{n:nat | o + n <= na}
+  (argv: !$A.borrow(byte, la, na), off: int o, len: int n,
+   specs: !$A.arr(int, ls, 1024), tbuf: !$A.arr(byte, lt, 8192), ac: int ac): int = let
+  fun loop {i:nat | i <= ac} .<ac - i>.
+    (argv: !$A.borrow(byte, la, na), specs: !$A.arr(int, ls, 1024),
+     tbuf: !$A.arr(byte, lt, 8192), i: int i): int =
+    if i >= ac then ~1
+    else if _spec_get(specs, i, 0) != ~1 then loop(argv, specs, tbuf, i + 1)
+    else let
+      val snoff = _u16(_spec_get(specs, i, 2))
+      val snlen = _u16(_spec_get(specs, i, 3))
+    in
+      if snlen != len then loop(argv, specs, tbuf, i + 1)
+      else if snoff + snlen > 8192 then loop(argv, specs, tbuf, i + 1)
+      else if _bytes_eq(argv, off, tbuf, snoff, len) then _spec_get(specs, i, 8)
+      else loop(argv, specs, tbuf, i + 1)
+    end
+in loop(argv, specs, tbuf, 0) end
 
 (* Parses argv[off, off + len) as a decimal int with optional leading
    '-'. Returns (value, success); (0, false) on a non-digit, an empty
@@ -489,8 +524,9 @@ in end
 
 (* Scan state after a token: (pos_idx, str_pos, next_av_pos, tok_num,
    subcmd_idx, err). err is 0, 3000 + closest (unknown long option),
-   3000 (unknown, nothing close), 4000 + ch (unknown short option) or
-   5000 + idx (value buffer full). *)
+   3000 (unknown, nothing close), 4000 + ch (unknown short option),
+   5000 + idx (value buffer full) or 6000 + tok_num (no such
+   subcommand). *)
 
 implement parse {tp0}{ac0}{la}{na} (p, argv, argv_len, argc) = let
   val+ ~parser_mk(specs, tbuf, ac, tp, gc, sc, pno, pnl, pho, phl) = p
@@ -610,10 +646,15 @@ implement parse {tp0}{ac0}{la}{na} (p, argv, argv_len, argc) = let
             end
             else @(str_pos, subcmd_idx, 4000 + b1)
           end
-        else let (* positional *)
+        else let (* subcommand or positional *)
+          val sub = (if subcmd_idx < 0 then _find_subcmd(argv, tok_start, tok_len, specs, tbuf, ac)
+                     else ~1): int
           val pidx = _find_pos_spec(specs, ac, pos_idx)
         in
-          if pidx >= 0 then let
+          if sub >= 0 then
+            scan_argv(argv, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
+              pos_idx, str_pos, next_pos, tok_num + 1, sub)
+          else if pidx >= 0 then let
             val () = $A.set<int>(present, pidx, 1)
             val sp2 = _store_str(argv, tok_start, tok_len, str_buf, str_meta, pidx, str_pos)
           in
@@ -621,9 +662,10 @@ implement parse {tp0}{ac0}{la}{na} (p, argv, argv_len, argc) = let
             else scan_argv(argv, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
               pos_idx + 1, sp2, next_pos, tok_num + 1, subcmd_idx)
           end
-          else
+          else if sc > 0 && subcmd_idx < 0 then @(str_pos, subcmd_idx, 6000 + tok_num)
+          else (* a positional nothing takes is ignored *)
             scan_argv(argv, specs, tbuf, str_buf, str_meta, int_vals, bool_vals, present,
-              pos_idx, str_pos, next_pos, tok_num + 1, tok_num)
+              pos_idx, str_pos, next_pos, tok_num + 1, subcmd_idx)
         end
       end
     end
@@ -681,7 +723,8 @@ in
   if scan_err > 0 then let
     val () = _free_parse_temps(str_buf, str_meta, int_vals, bool_vals, present, tbuf, specs)
   in
-    if scan_err >= 5000 then $R.err(err_too_long(scan_err - 5000 + 1))
+    if scan_err >= 6000 then $R.err(err_choice(scan_err - 6000))
+    else if scan_err >= 5000 then $R.err(err_too_long(scan_err - 5000 + 1))
     else if scan_err >= 4000 then $R.err(err_unknown_short(scan_err - 4000))
     else $R.err(err_unknown_long(scan_err - 3000))
   end
@@ -832,7 +875,7 @@ implement format_help {l}{n} (r, buf, max_len) = let
       val pos = _help_put(buf, pos, 32, max_len)
       val pos = _help_put(buf, pos, 32, max_len)
     in
-      if _spec_get(specs, i, 0) = 0 then let
+      if _spec_get(specs, i, 0) <= 0 then let (* positional or subcommand *)
         val pos = _help_copy(buf, pos, tbuf, noff, nlen, max_len)
         val pos = _help_put(buf, pos, 32, max_len)
         val pos = _help_put(buf, pos, 32, max_len)

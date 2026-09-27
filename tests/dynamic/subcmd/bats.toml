@@ -1,0 +1,9 @@
+[package]
+name = "subcmd"
+kind = "bin"
+
+[dependencies]
+"argparse" = ""
+"array" = ""
+"result" = ""
+"str" = ""

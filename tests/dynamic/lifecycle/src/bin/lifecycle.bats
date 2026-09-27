@@ -43,8 +43,7 @@ in
 end
 
 implement main0 () = let
-  (* prog run: get_subcmd gives the token number of the first positional
-     no spec takes, 1 *)
+  (* prog run: get_subcmd gives the index of subcommand run, 0 *)
   val p = new_parser()
   var sn = @[char][3]('r', 'u', 'n')
   var sh = @[char][4]('r', 'u', 'n', 's')
@@ -57,7 +56,7 @@ implement main0 () = let
   val () = $A.free<byte>($A.thaw<byte>(f2))
   val @(p, _) = $AP.add_exclusive_group(p)
   var a1 = @[char][9]('p', 'r', 'o', 'g', '\000', 'r', 'u', 'n', '\000')
-  val r1 = run(p, a1, 9, 2, 1)
+  val r1 = run(p, a1, 9, 2, 0)
   (* prog --nope *)
   var a2 = @[char][12]('p', 'r', 'o', 'g', '\000', '-', '-', 'n', 'o', 'p', 'e', '\000')
   val r2 = run(new_parser(), a2, 12, 2, 0)
