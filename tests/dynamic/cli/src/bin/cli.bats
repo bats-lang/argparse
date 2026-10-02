@@ -5,44 +5,44 @@
 #use str as S
 
 fn _str {tp:nat}{ac:nat | ac < 64}{nn,nh:pos | tp + nn + nh <= 8192; nn <= 1048576; nh <= 1048576}
-  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, sc: int, hc: &(@[char][nh]), nh: int nh, pos: bool)
+  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, short_name: $R.option(int), hc: &(@[char][nh]), nh: int nh, pos: bool)
   : @($AP.parser(tp + nn + nh, ac + 1), $AP.arg($AP.string_val)) = let
   val @(f1, b1) = $A.freeze<byte>($S.from_char_array(nc, nn))
   val @(f2, b2) = $A.freeze<byte>($S.from_char_array(hc, nh))
-  val r = $AP.add_string(p, b1, nn, sc, b2, nh, pos)
+  val r = $AP.add_string(p, b1, nn, short_name, b2, nh, pos)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
   val () = $A.free<byte>($A.thaw<byte>(f2))
 in r end
 fn _int {tp:nat}{ac:nat | ac < 64}{nn,nh:pos | tp + nn + nh <= 8192; nn <= 1048576; nh <= 1048576}
-  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, sc: int, hc: &(@[char][nh]), nh: int nh, d: int, lo: int, hi: int)
+  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, short_name: $R.option(int), hc: &(@[char][nh]), nh: int nh, d: int, range: $AP.int_range)
   : @($AP.parser(tp + nn + nh, ac + 1), $AP.arg($AP.int_val)) = let
   val @(f1, b1) = $A.freeze<byte>($S.from_char_array(nc, nn))
   val @(f2, b2) = $A.freeze<byte>($S.from_char_array(hc, nh))
-  val r = $AP.add_int(p, b1, nn, sc, b2, nh, d, lo, hi)
+  val r = $AP.add_int(p, b1, nn, short_name, b2, nh, d, range)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
   val () = $A.free<byte>($A.thaw<byte>(f2))
 in r end
 fn _flag {tp:nat}{ac:nat | ac < 64}{nn,nh:pos | tp + nn + nh <= 8192; nn <= 1048576; nh <= 1048576}
-  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, sc: int, hc: &(@[char][nh]), nh: int nh)
+  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, short_name: $R.option(int), hc: &(@[char][nh]), nh: int nh)
   : @($AP.parser(tp + nn + nh, ac + 1), $AP.arg($AP.bool_val)) = let
   val @(f1, b1) = $A.freeze<byte>($S.from_char_array(nc, nn))
   val @(f2, b2) = $A.freeze<byte>($S.from_char_array(hc, nh))
-  val r = $AP.add_flag(p, b1, nn, sc, b2, nh)
+  val r = $AP.add_flag(p, b1, nn, short_name, b2, nh)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
   val () = $A.free<byte>($A.thaw<byte>(f2))
 in r end
 fn _count {tp:nat}{ac:nat | ac < 64}{nn,nh:pos | tp + nn + nh <= 8192; nn <= 1048576; nh <= 1048576}
-  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, sc: int, hc: &(@[char][nh]), nh: int nh)
+  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, short_name: $R.option(int), hc: &(@[char][nh]), nh: int nh)
   : @($AP.parser(tp + nn + nh, ac + 1), $AP.arg($AP.count_val)) = let
   val @(f1, b1) = $A.freeze<byte>($S.from_char_array(nc, nn))
   val @(f2, b2) = $A.freeze<byte>($S.from_char_array(hc, nh))
-  val r = $AP.add_count(p, b1, nn, sc, b2, nh)
+  val r = $AP.add_count(p, b1, nn, short_name, b2, nh)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
@@ -75,6 +75,11 @@ fn _help {m:pos | m <= 1048576} (r: !$AP.parse_result, m: int m): void = let
   val () = println! ("]")
 in $A.free<byte>(hb) end
 
+fn _show_sub (r: !$AP.parse_result): void =
+  case+ $AP.get_subcmd(r) of
+  | ~$R.some(i) => print! (" sub=", i)
+  | ~$R.none() => print! (" sub=none")
+
 (* Builds the test parser, parses argv, prints what came out. *)
 fn _run {na:pos | na <= 1048576} (label: string, av: &(@[char][na]), na: int na, argc: int, help_max: int): void = let
   var pn = @[char][4]('p', 'r', 'o', 'g')
@@ -88,22 +93,22 @@ fn _run {na:pos | na <= 1048576} (label: string, av: &(@[char][na]), na: int na,
   val () = $A.free<byte>($A.thaw<byte>(fph))
   var n1 = @[char][4]('f', 'i', 'l', 'e')
   var h1 = @[char][5]('i', 'n', 'p', 'u', 't')
-  val @(p, hfile) = _str(p, n1, 4, 0, h1, 5, true)
+  val @(p, hfile) = _str(p, n1, 4, $R.none(), h1, 5, true)
   var n2 = @[char][3]('o', 'u', 't')
   var h2 = @[char][6]('o', 'u', 't', 'p', 'u', 't')
-  val @(p, hout) = _str(p, n2, 3, 111, h2, 6, false)
+  val @(p, hout) = _str(p, n2, 3, $R.some(111), h2, 6, false)
   var n3 = @[char][4]('j', 'o', 'b', 's')
   var h3 = @[char][7]('w', 'o', 'r', 'k', 'e', 'r', 's')
-  val @(p, hjobs) = _int(p, n3, 4, 106, h3, 7, 1, 1, 8)
+  val @(p, hjobs) = _int(p, n3, 4, $R.some(106), h3, 7, 1, $AP.IntBetween(1, 8))
   var n4 = @[char][7]('v', 'e', 'r', 'b', 'o', 's', 'e')
   var h4 = @[char][6]('c', 'h', 'a', 't', 't', 'y')
-  val @(p, hv) = _flag(p, n4, 7, 118, h4, 6)
+  val @(p, hv) = _flag(p, n4, 7, $R.some(118), h4, 6)
   var n5 = @[char][5]('d', 'e', 'b', 'u', 'g')
   var h5 = @[char][4]('m', 'o', 'r', 'e')
-  val @(p, hd) = _count(p, n5, 5, 100, h5, 4)
+  val @(p, hd) = _count(p, n5, 5, $R.some(100), h5, 4)
   var n6 = @[char][5]('q', 'u', 'i', 'e', 't')
   var h6 = @[char][4]('h', 'u', 's', 'h')
-  val @(p, hq) = _flag(p, n6, 5, 113, h6, 4)
+  val @(p, hq) = _flag(p, n6, 5, $R.some(113), h6, 4)
   val @(p, g) = $AP.add_exclusive_group(p)
   val p = $AP.add_to_group(p, g, hv)
   val p = $AP.add_to_group(p, g, hq)
@@ -121,14 +126,18 @@ in
       val () = (if $AP.is_present(r, hjobs) then print! ("!") else ()): void
       val () = (if $AP.get_bool(r, hv) then print! (" v") else ()): void
       val () = (if $AP.get_bool(r, hq) then print! (" q") else ()): void
-      val () = print! (" d=", $AP.get_count(r, hd), " sub=", $AP.get_subcmd(r))
+      val () = print! (" d=", $AP.get_count(r, hd))
+      val () = _show_sub(r)
       val () = println! ()
       val () = (if help_max > 512 then _help(r, 512)
                 else if help_max > 0 then _help(r, 20) else ()): void
     in $AP.parse_result_free(r) end
   | ~$R.err(e) => let
       val () = (case+ e of
-        | ~$AP.err_unknown_long(i) => println! (" unknown long ", i)
+        | ~$AP.err_unknown_long(closest) => (case+ closest of
+          | ~$R.some(i) => println! (" unknown long ", i)
+          | ~$R.none() => println! (" unknown long"))
+        | ~$AP.err_not_int(i) => println! (" not an int ", i)
         | ~$AP.err_unknown_short(c) => println! (" unknown short ", c)
         | ~$AP.err_range(i) => println! (" range ", i)
         | ~$AP.err_exclusive(g) => println! (" exclusive ", g)

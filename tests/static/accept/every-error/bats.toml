@@ -1,8 +1,8 @@
 [package]
-name = "last-arg"
+name = "every-error"
 kind = "lib"
 
 [dependencies]
-"argparse" = ""
 "array" = ""
+"argparse" = ""
 "result" = ""

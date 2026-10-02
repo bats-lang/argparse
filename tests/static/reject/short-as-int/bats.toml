@@ -1,8 +1,8 @@
 [package]
-name = "last-arg"
+name = "short-as-int"
 kind = "lib"
 
 [dependencies]
-"argparse" = ""
 "array" = ""
+"argparse" = ""
 "result" = ""

@@ -33,10 +33,10 @@ implement main0 () = let
   val p = $AP.parser_new(b1, 4, b2, 1)
   var n1 = @[char][4]('f', 'i', 'l', 'e')
   val @(f3, b3) = $A.freeze<byte>($S.from_char_array(n1, 4))
-  val @(p, _) = $AP.add_string(p, b3, 4, 0, b2, 1, true)
+  val @(p, _) = $AP.add_string(p, b3, 4, $R.none(), b2, 1, true)
   var n2 = @[char][3]('o', 'u', 't')
   val @(f4, b4) = $A.freeze<byte>($S.from_char_array(n2, 3))
-  val @(p, _) = $AP.add_string(p, b4, 3, 111, b2, 1, false)
+  val @(p, _) = $AP.add_string(p, b4, 3, $R.some(111), b2, 1, false)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
@@ -56,7 +56,10 @@ in
   | ~$R.ok(r) => let val () = println! ("parsed") in $AP.parse_result_free(r) end
   | ~$R.err(e) => (case+ e of
     | ~$AP.err_too_long(i) => println! ("too long ", i)
-    | ~$AP.err_unknown_long(i) => println! ("unknown long ", i)
+    | ~$AP.err_unknown_long(closest) => (case+ closest of
+      | ~$R.some(i) => println! ("unknown long ", i)
+      | ~$R.none() => println! ("unknown long"))
+    | ~$AP.err_not_int(i) => println! ("not an int ", i)
     | ~$AP.err_unknown_short(i) => println! ("unknown short ", i)
     | ~$AP.err_range(i) => println! ("range ", i)
     | ~$AP.err_exclusive(i) => println! ("exclusive ", i)

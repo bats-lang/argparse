@@ -5,44 +5,44 @@
 #use str as S
 
 fn _str {tp:nat}{ac:nat | ac < 64}{nn,nh:pos | tp + nn + nh <= 8192; nn <= 1048576; nh <= 1048576}
-  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, sc: int, hc: &(@[char][nh]), nh: int nh, pos: bool)
+  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, short_name: $R.option(int), hc: &(@[char][nh]), nh: int nh, pos: bool)
   : @($AP.parser(tp + nn + nh, ac + 1), $AP.arg($AP.string_val)) = let
   val @(f1, b1) = $A.freeze<byte>($S.from_char_array(nc, nn))
   val @(f2, b2) = $A.freeze<byte>($S.from_char_array(hc, nh))
-  val r = $AP.add_string(p, b1, nn, sc, b2, nh, pos)
+  val r = $AP.add_string(p, b1, nn, short_name, b2, nh, pos)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
   val () = $A.free<byte>($A.thaw<byte>(f2))
 in r end
 fn _int {tp:nat}{ac:nat | ac < 64}{nn,nh:pos | tp + nn + nh <= 8192; nn <= 1048576; nh <= 1048576}
-  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, sc: int, hc: &(@[char][nh]), nh: int nh, d: int, lo: int, hi: int)
+  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, short_name: $R.option(int), hc: &(@[char][nh]), nh: int nh, d: int, range: $AP.int_range)
   : @($AP.parser(tp + nn + nh, ac + 1), $AP.arg($AP.int_val)) = let
   val @(f1, b1) = $A.freeze<byte>($S.from_char_array(nc, nn))
   val @(f2, b2) = $A.freeze<byte>($S.from_char_array(hc, nh))
-  val r = $AP.add_int(p, b1, nn, sc, b2, nh, d, lo, hi)
+  val r = $AP.add_int(p, b1, nn, short_name, b2, nh, d, range)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
   val () = $A.free<byte>($A.thaw<byte>(f2))
 in r end
 fn _flag {tp:nat}{ac:nat | ac < 64}{nn,nh:pos | tp + nn + nh <= 8192; nn <= 1048576; nh <= 1048576}
-  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, sc: int, hc: &(@[char][nh]), nh: int nh)
+  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, short_name: $R.option(int), hc: &(@[char][nh]), nh: int nh)
   : @($AP.parser(tp + nn + nh, ac + 1), $AP.arg($AP.bool_val)) = let
   val @(f1, b1) = $A.freeze<byte>($S.from_char_array(nc, nn))
   val @(f2, b2) = $A.freeze<byte>($S.from_char_array(hc, nh))
-  val r = $AP.add_flag(p, b1, nn, sc, b2, nh)
+  val r = $AP.add_flag(p, b1, nn, short_name, b2, nh)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
   val () = $A.free<byte>($A.thaw<byte>(f2))
 in r end
 fn _count {tp:nat}{ac:nat | ac < 64}{nn,nh:pos | tp + nn + nh <= 8192; nn <= 1048576; nh <= 1048576}
-  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, sc: int, hc: &(@[char][nh]), nh: int nh)
+  (p: $AP.parser(tp, ac), nc: &(@[char][nn]), nn: int nn, short_name: $R.option(int), hc: &(@[char][nh]), nh: int nh)
   : @($AP.parser(tp + nn + nh, ac + 1), $AP.arg($AP.count_val)) = let
   val @(f1, b1) = $A.freeze<byte>($S.from_char_array(nc, nn))
   val @(f2, b2) = $A.freeze<byte>($S.from_char_array(hc, nh))
-  val r = $AP.add_count(p, b1, nn, sc, b2, nh)
+  val r = $AP.add_count(p, b1, nn, short_name, b2, nh)
   val () = $A.drop<byte>(f1, b1)
   val () = $A.free<byte>($A.thaw<byte>(f1))
   val () = $A.drop<byte>(f2, b2)
@@ -105,13 +105,13 @@ fn _run {na:pos | na <= 1048576} (label: string, av: &(@[char][na]), na: int na,
   val @(p, i_run) = _sub(p, n1, 3, h1, 4)
   var n2 = @[char][4]('f', 'i', 'l', 'e')
   var h2 = @[char][5]('i', 'n', 'p', 'u', 't')
-  val @(p, hfile) = _str(p, n2, 4, 0, h2, 5, true)
+  val @(p, hfile) = _str(p, n2, 4, $R.none(), h2, 5, true)
   var n3 = @[char][5]('b', 'u', 'i', 'l', 'd')
   var h3 = @[char][6]('b', 'u', 'i', 'l', 'd', 's')
   val @(p, i_build) = _sub(p, n3, 5, h3, 6)
   var n4 = @[char][7]('v', 'e', 'r', 'b', 'o', 's', 'e')
   var h4 = @[char][6]('c', 'h', 'a', 't', 't', 'y')
-  val @(p, hv) = _flag(p, n4, 7, 118, h4, 6)
+  val @(p, hv) = _flag(p, n4, 7, $R.some(118), h4, 6)
   val @(fa, ba) = $A.freeze<byte>($S.from_char_array(av, na))
   val res = $AP.parse(p, ba, na, argc)
   val () = $A.drop<byte>(fa, ba)
@@ -120,10 +120,14 @@ fn _run {na:pos | na <= 1048576} (label: string, av: &(@[char][na]), na: int na,
 in
   case+ res of
   | ~$R.ok(r) => let
-      val sub = $AP.get_subcmd(r)
-      val () = print! (" sub=", sub)
-      val () = (if sub = i_run then print! (" (run)")
-                else if sub = i_build then print! (" (build)") else ()): void
+      val () = (case+ $AP.get_subcmd(r) of
+        | ~$R.some(sub) => let
+            val () = print! (" sub=", sub)
+          in
+            if sub = i_run then print! (" (run)")
+            else if sub = i_build then print! (" (build)") else ()
+          end
+        | ~$R.none() => print! (" sub=none")): void
       val () = _show_str(r, "file", hfile)
       val () = (if $AP.get_bool(r, hv) then print! (" v") else ()): void
       val () = println! ()
@@ -131,7 +135,10 @@ in
     in $AP.parse_result_free(r) end
   | ~$R.err(e) => let
       val () = (case+ e of
-        | ~$AP.err_unknown_long(i) => println! (" unknown long ", i)
+        | ~$AP.err_unknown_long(closest) => (case+ closest of
+          | ~$R.some(i) => println! (" unknown long ", i)
+          | ~$R.none() => println! (" unknown long"))
+        | ~$AP.err_not_int(i) => println! (" not an int ", i)
         | ~$AP.err_unknown_short(c) => println! (" unknown short ", c)
         | ~$AP.err_range(i) => println! (" range ", i)
         | ~$AP.err_exclusive(g) => println! (" exclusive ", g)
