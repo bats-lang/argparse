@@ -31,14 +31,14 @@ fn run {tp:nat | tp <= 8192}{ac:nat | ac <= 64}{na:pos | na <= 1048576}
 in
   case+ res of
   | ~$R.ok(r) => let
-      val sub = $AP.get_subcmd(r)
+      val sub = (case+ $AP.get_subcmd(r) of ~$R.some(i) => i = want_sub | ~$R.none() => false): bool
       val hb = $A.alloc<byte>(256)
       val hn = $AP.format_help(r, hb, 256)
       val () = $A.free<byte>(hb)
       val () = $AP.parse_result_free(r)
-    in if sub = want_sub && hn > 0 then 0 else 2 end
+    in if sub && hn > 0 then 0 else 2 end
   | ~$R.err(e) => let
-      val k = (case+ e of ~$AP.err_unknown_long(_) => 1 | e2 => let val () = $AP.parse_error_free(e2) in 2 end): int
+      val k = (case+ e of ~$AP.err_unknown_long(closest) => let val () = $R.option_discard<int>(closest) in 1 end | e2 => let val () = $AP.parse_error_free(e2) in 2 end): int
     in k end
 end
 

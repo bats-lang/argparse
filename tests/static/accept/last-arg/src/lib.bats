@@ -1,6 +1,7 @@
 #include "share/atspre_staload.hats"
 #use array as A
 #use argparse as AP
+#use result as R
 
 (* A parser already holding 63 arguments takes one more flag. The
    parser is indexed by its argument count, and adding requires fewer
@@ -10,4 +11,4 @@
   (p: $AP.parser(tp, 63), name: !$A.borrow(byte, ln, 1), help: !$A.borrow(byte, lh, 1))
   : @($AP.parser(tp + 2, 63 + 1), $AP.arg($AP.bool_val))
 
-implement add_one (p, name, help) = $AP.add_flag(p, name, 1, 0, help, 1)
+implement add_one (p, name, help) = $AP.add_flag(p, name, 1, $R.none(), help, 1)

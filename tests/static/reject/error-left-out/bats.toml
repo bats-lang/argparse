@@ -1,8 +1,8 @@
 [package]
-name = "last-arg"
+name = "error-left-out"
 kind = "lib"
 
 [dependencies]
-"argparse" = ""
 "array" = ""
+"argparse" = ""
 "result" = ""
