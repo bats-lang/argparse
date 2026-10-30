@@ -15,4 +15,4 @@ on:
 
 jobs:
   check:
-    uses: bats-lang/repository-prototype/.github/workflows/package-check.yml@989caaa2e20663583b1a9c7979f93375959d1ce3 # repository-prototype main 989caaa
+    uses: bats-lang/repository-prototype/.github/workflows/package-check.yml@0d40672762e0482b1ea58f936b1e7c265eb9e57a # repository-prototype main 0d40672
